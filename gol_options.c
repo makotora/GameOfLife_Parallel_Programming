@@ -6,14 +6,11 @@
 #include "gol_array.h"
 #include "functions.h"
 
-#define WAIT_FOR_ENTER 1
-#define PRINT_STEPS 1
-
-int main(int argc, char* argv[])
+int main()
 {
 	//the following can be also given by the user (to do)
-	int N = 19;
-	int M = 70;
+	int N = 15;
+	int M = 10;
 	int max_loops = 1000;
 
 	gol_array* temp;//for swaps;
@@ -25,34 +22,51 @@ int main(int argc, char* argv[])
 	ga1 = gol_array_init(N, M);
 	ga2 = gol_array_init(N, M);
 
-	char* filename;
+	int option;
+	char filename[50];
 	FILE* file;
 
-	if (argc > 1)
+	printf("Please choose input type:\n1. Keyboard\n2. File\n: ");
+	scanf("%d", &option);
+
+	while (option != 1 && option != 2)
 	{
-		filename = argv[1];
+		printf("Invalid choice, try again\n");
+		printf("Please choose input type:\n1. Keyboard\n2. File\n: ");
+		scanf("%d", &option);
+	}
+
+
+	if (option == 1)
+	{
+		gol_array_read_input(ga1);
+	}
+	else//option 2: file
+	{
+		printf("Please give name/path to input file: ");
+		scanf("%s", filename);
+
 		file = fopen(filename, "r");
 
-		if (file == NULL)
+		while (file == NULL)
 		{
-			printf("Error opening file\n");
-			return -1;
+			printf("Input file '%s' does not exist! Try again\n", filename);
+			getchar();//get that damn \n
+
+			printf("Please give name/path to input file: ");
+			scanf("%s", filename);
+
+			file = fopen(filename, "r");
 		}
+
 
 		gol_array_read_file(file, ga1);
 	}
-	else//no input file given, generate a random game array
-	{
-		printf("No input file given as argument\n");
-		printf("Generating a random game of life array to play\n");
-		gol_array_generate(ga1);
-	}
-
 
 	printf("Printing initial array:\n\n");
 	print_array(ga1->array, N, M);
 	putchar('\n');
-	getchar();//get \n chars (I getchar() in the loop to get 'Enter' in orded to continue with the next loop)
+	getchar();getchar();//get \n chars (I getchar() in the loop to get 'Enter' in orded to continue with the next loop)
 
 	//Game of life LOOP
 	int count = 0;
@@ -101,11 +115,8 @@ int main(int argc, char* argv[])
 			}
 		}
 
-		if (PRINT_STEPS)
-		{
-			print_array(array2, N, M);
-			putchar('\n');
-		}
+		print_array(array2, N, M);
+		putchar('\n');
 
 		if (no_change == 1)
 		{
@@ -119,8 +130,7 @@ int main(int argc, char* argv[])
 		ga2 = temp;
 
 		//wait for input to continue
-		if (WAIT_FOR_ENTER)
-			getchar();
+		getchar();
 	}
 
 
