@@ -6,7 +6,7 @@
 #include "gol_array.h"
 #include "functions.h"
 
-#define WAIT_FOR_ENTER 1
+#define WAIT_FOR_ENTER 0
 #define PRINT_STEPS 1
 
 int main(int argc, char* argv[])
@@ -129,6 +129,8 @@ int main(int argc, char* argv[])
 		printf("Max loop number (%d) was reached. Terminating Game of Life\n", max_loops);
 	}
 
+
+	fclose(file);
 	//free arrays
 	gol_array_free(&ga1);
 	gol_array_free(&ga2);

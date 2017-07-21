@@ -10,6 +10,7 @@
 
 struct gol_array
 {
+	short int* flat_array;
 	short int** array;
 	int lines;
 	int columns;

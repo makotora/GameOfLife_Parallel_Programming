@@ -2,25 +2,25 @@
 
 gol_array* gol_array_init(int lines, int columns)
 {
-	short int** array;
-	int i, j;
+	//allocate one big flat array, so as to make sure that the memory is continuous
+	//in our 2 dimensional array
+	short int* flat_array = malloc(lines*columns*sizeof(short int));
+	assert(flat_array != NULL);
 
-	//allocate a lines*columns array and initialise with zeros
-	array = malloc(lines * sizeof(short int*));
+	short int** array = malloc(lines*sizeof(short int*));
 	assert(array != NULL);
+	int i;
+
+	//make a 2 dimension array by pointing to our flat 1 dimensional array
 	
 	for (i=0; i<lines; i++)
 	{
-		array[i] = malloc(columns * sizeof(short int));
-
-		for (j=0; j<columns; j++)
-		{
-			array[i][j] = 0;
-		}
+		array[i] = &(flat_array[columns*i]);
 	}
 
 	//allocate gol_array struct
 	gol_array* new_gol_array = malloc(sizeof(gol_array));
+	new_gol_array->flat_array = flat_array;
 	new_gol_array->array = array;
 	new_gol_array->lines = lines;
 	new_gol_array->columns = columns;
@@ -33,17 +33,9 @@ gol_array* gol_array_init(int lines, int columns)
 void gol_array_free(gol_array** gol_ar)
 {
 	gol_array* gol_ar_ptr = *gol_ar;
-	int i;
 
-	short int** array = gol_ar_ptr->array;
-	int N = gol_ar_ptr->lines;
-
-	for (i=0; i<N; i++)
-	{
-		free(array[i]);
-	}
-
-	free(array);
+	free(gol_ar_ptr->flat_array);
+	free(gol_ar_ptr->array);
 	free(*gol_ar);
 	*gol_ar = NULL;
 }
