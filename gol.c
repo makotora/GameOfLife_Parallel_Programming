@@ -3,18 +3,18 @@
 #include <string.h>
 #include <stdlib.h>
 
-#include "gol_array.h"
-#include "functions.h"
+#include "./gol_lib/gol_array.h"
+#include "./gol_lib/functions.h"
 
 #define WAIT_FOR_ENTER 0
-#define PRINT_STEPS 1
+#define PRINT_STEPS 0
 
 int main(int argc, char* argv[])
 {
 	//the following can be also given by the user (to do)
 	int N = 19;
 	int M = 70;
-	int max_loops = 1000;
+	int max_loops = 200;
 
 	gol_array* temp;//for swaps;
 	gol_array* ga1;
@@ -52,11 +52,16 @@ int main(int argc, char* argv[])
 	printf("Printing initial array:\n\n");
 	print_array(ga1->array, N, M);
 	putchar('\n');
-	getchar();//get \n chars (I getchar() in the loop to get 'Enter' in orded to continue with the next loop)
+
+	if (WAIT_FOR_ENTER)
+		getchar();//get \n chars (I getchar() in the loop to get 'Enter' in orded to continue with the next loop)
 
 	//Game of life LOOP
 	int count = 0;
 	int no_change;
+
+	printf("Starting the Game of Life\n");
+	long int start = time(NULL);
 
 	while (count < max_loops)
 	{
@@ -129,6 +134,7 @@ int main(int argc, char* argv[])
 		printf("Max loop number (%d) was reached. Terminating Game of Life\n", max_loops);
 	}
 
+	printf("Time elapsed: %ld seconds\n", time(NULL) - start);
 
 	fclose(file);
 	//free arrays

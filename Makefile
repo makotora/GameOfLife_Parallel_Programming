@@ -1,35 +1,26 @@
-OBJS = gol.o gol_array.o functions.o file_generator.o
-SOURCE = gol.c gol_array.c functions.c file_generator.c gui_gen.c
-HEADER = gol_array.h functions.h
+OBJS = gol.o
+SOURCE = gol.c
+HEADER =
 CC = gcc
 CFLAGS= -c -Wall
 LFLAGS= -Wall
 
-all: gol fgen
+all: gol
 
-gol: gol.o gol_array.o functions.o
-	$(CC) $(LFLAGS) gol.o gol_array.o functions.o -o gol
-
-fgen: file_generator.o
-	$(CC) $(LFLAGS) file_generator.o -o fgen
-
-ggen: gui_gen.c
-	$(CC) -o ggen gui_gen.c
+gol: gol.o gol_lib_make
+	$(CC) $(LFLAGS) gol.o ./gol_lib/gol_array.o ./gol_lib/functions.o -o gol
 
 gol.o: gol.c
 	$(CC) $(CFLAGS) gol.c
 
-gol_array.o: gol_array.c
-	$(CC) $(CFLAGS) gol_array.c
-
-functions.o: functions.c
-	$(CC) $(CFLAGS) functions.c
-
-file_generator.o: file_generator.c
-	$(CC) $(CFLAGS) file_generator.c
-
-clean:
+clean: gol_lib_clean
 	rm -f $(OBJS) gol fgen
+
+gol_lib_make:
+	cd gol_lib && make && cd ..
+
+gol_lib_clean:
+	cd gol_lib && make clean && cd ..
 
 count:
 	wc $(SOURCE) $(HEADER)
