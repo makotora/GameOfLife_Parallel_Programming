@@ -25,8 +25,8 @@ int main(int argc, char* argv[])
 	ga1 = gol_array_init(N, M);
 	ga2 = gol_array_init(N, M);
 
-	char* filename;
-	FILE* file;
+	char* filename = NULL;
+	FILE* file = NULL;
 
 	if (argc > 1)
 	{
@@ -75,34 +75,13 @@ int main(int argc, char* argv[])
 			for (j=0; j<M; j++)
 			{
 				//for each cell/organism
-
-				//get the number of neighbours
-				int neighbours_num = num_of_neighbours(array1, N, M, i, j);
-			
-				if (array1[i][j] == 1)//if its alive
+				//see if there is a change
+				//populate functions applies the game's rules
+				//and returns 0 if a change occurs
+				if (populate(array1, array2, N, M, i, j) == 0)
 				{
-					if (neighbours_num < 2 ||  neighbours_num > 3)//0,1 or 4 to 8 neighbours
-					{//the organism dies
-						array2[i][j] = 0;
-						no_change = 0;
-					}
-					else//2 or 3 neigbours. So the organism survives (no change)
-					{
-						array2[i][j] = 1;
-					}
+					no_change = 0;
 				}
-				else//if its dead
-				{
-					if (neighbours_num == 3)//3 neighbours
-					{//a new organism is born
-						array2[i][j] = 1;
-						no_change = 0;
-					}
-					else
-					{//still no organism (no change)
-						array2[i][j] = 0;
-					}
-				}	
 			}
 		}
 
@@ -136,7 +115,8 @@ int main(int argc, char* argv[])
 
 	printf("Time elapsed: %ld seconds\n", time(NULL) - start);
 
-	fclose(file);
+	if (file != NULL)
+		fclose(file);
 	//free arrays
 	gol_array_free(&ga1);
 	gol_array_free(&ga2);

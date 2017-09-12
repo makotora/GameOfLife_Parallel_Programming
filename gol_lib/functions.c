@@ -24,6 +24,43 @@ void print_array(short int** array, int N, int M)
 }
 
 
+int populate(short int** array1, short int** array2, int N, int M, int i, int j)
+{
+	int no_change;
+	//get the number of neighbours
+	int neighbours_num = num_of_neighbours(array1, N, M, i, j);
+
+	if (array1[i][j] == 1)//if its alive
+	{
+		if (neighbours_num < 2 || neighbours_num > 3)//0,1 or 4 to 8 neighbours
+		{//the organism dies
+			array2[i][j] = 0;
+			no_change = 0;
+		}
+		else//2 or 3 neigbours. So the organism survives (no change)
+		{
+			array2[i][j] = 1;
+			no_change = 1;
+		}
+	}
+	else//if its dead
+	{
+		if (neighbours_num == 3)//3 neighbours
+		{//a new organism is born
+			array2[i][j] = 1;
+			no_change = 0;
+		}
+		else
+		{//still no organism (no change)
+			array2[i][j] = 0;
+			no_change = 1;
+		}
+	}	
+
+	return no_change;
+}
+
+
 int num_of_neighbours(short int** array, int N, int M, int row, int col)
 {
 	int up_row = (row-1+N) % N;

@@ -1,4 +1,5 @@
 #include "gol_array.h"
+#include "functions.h"
 
 gol_array* gol_array_init(int lines, int columns)
 {
@@ -184,4 +185,6 @@ void gol_array_generate(gol_array* gol_ar)
 		fprintf(file, "%d %d\n", x, y);
 		array[x][y] = 1;
 	}
+
+	fclose(file);
 }
