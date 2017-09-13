@@ -26,15 +26,21 @@ int main(int argc, char* argv[])
 	ga1 = gol_array_init(N, M);
 	ga2 = gol_array_init(N, M);
 
+	//MPI init
 	char* filename;
 	FILE* file;
 	int rank, size;
+	int tag = 1400201;
+	MPI_Status status;
+
 	MPI_Init (&argc, &argv);
   	MPI_Comm_rank (MPI_COMM_WORLD, &rank);
   	MPI_Comm_size (MPI_COMM_WORLD, &size);
 
+
 	//for master process only
-  	if (rank == 0) {
+  	if (rank == 0) 
+  	{
 		if (argc > 1) {
 			filename = argv[1];
 			file = fopen(filename, "r");
@@ -56,6 +62,7 @@ int main(int argc, char* argv[])
 		printf("Printing initial array:\n\n");
 		print_array(ga1->array, N, M);
 		putchar('\n');	
+		printf("Starting the Game of Life\n");
 
   	}
 
@@ -63,10 +70,10 @@ int main(int argc, char* argv[])
 	int count = 0;
 	int no_change;
 
-	printf("Starting the Game of Life\n");
 	long int start = time(NULL);
 
-	while (count < max_loops) {
+	while (count < max_loops) 
+	{
 		count++;
 		no_change = 1;
 		short int** array1 = ga1->array;
@@ -76,26 +83,13 @@ int main(int argc, char* argv[])
 			for (j=0; j<M; j++) {
 				//for each cell/organism
 
-				//get the number of neighbours
-				int neighbours_num = num_of_neighbours(array1, N, M, i, j);
-			
-				if (array1[i][j] == 1) {//if its alive
-					if (neighbours_num < 2 ||  neighbours_num > 3) {//0,1 or 4 to 8 neighbours
-						array2[i][j] = 0;//the organism dies
-						no_change = 0;
-					}
-					else {//2 or 3 neigbours. So the organism survives (no change)
-						array2[i][j] = 1;
-					}
-				}
-				else {//if its dead
-					if (neighbours_num == 3) {//3 neighbours
-						array2[i][j] = 1;//a new organism is born
-						no_change = 0;
-					}
-					else {
-						array2[i][j] = 0;//still no organism (no change)
-					}
+				//for each cell/organism
+				//see if there is a change
+				//populate functions applies the game's rules
+				//and returns 0 if a change occurs
+				if (populate(array1, array2, N, M, i, j) == 0)
+				{
+					no_change = 0;
 				}	
 			}
 		}
@@ -119,12 +113,12 @@ int main(int argc, char* argv[])
 	}
 
 
-	if (no_change == 0)
-	{
-		printf("Max loop number (%d) was reached. Terminating Game of Life\n", max_loops);
-	}
-
 	if (rank == 0) {
+		if (no_change == 0)
+		{
+			printf("Max loop number (%d) was reached. Terminating Game of Life\n", max_loops);
+		}
+
 		printf("Time elapsed: %ld seconds\n", time(NULL) - start);
 	}
 
@@ -132,6 +126,8 @@ int main(int argc, char* argv[])
 	//free arrays
 	gol_array_free(&ga1);
 	gol_array_free(&ga2);
+
+	MPI_Finalize();
 
 	return 0;
 
