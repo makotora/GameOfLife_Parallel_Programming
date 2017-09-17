@@ -26,20 +26,11 @@ int main(int argc, char* argv[])
 	ga2 = gol_array_init(N, M);
 
 	char* filename = NULL;
-	FILE* file = NULL;
 
 	if (argc > 1)
 	{
 		filename = argv[1];
-		file = fopen(filename, "r");
-
-		if (file == NULL)
-		{
-			printf("Error opening file\n");
-			return -1;
-		}
-
-		gol_array_read_file(file, ga1);
+		gol_array_read_file(filename, ga1);
 	}
 	else//no input file given, generate a random game array
 	{
@@ -115,8 +106,6 @@ int main(int argc, char* argv[])
 
 	printf("Time elapsed: %ld seconds\n", time(NULL) - start);
 
-	if (file != NULL)
-		fclose(file);
 	//free arrays
 	gol_array_free(&ga1);
 	gol_array_free(&ga2);

@@ -5,7 +5,7 @@ gol_array* gol_array_init(int lines, int columns)
 {
 	//allocate one big flat array, so as to make sure that the memory is continuous
 	//in our 2 dimensional array
-	short int* flat_array = malloc(lines*columns*sizeof(short int));
+	short int* flat_array = calloc(lines*columns, sizeof(short int));
 	assert(flat_array != NULL);
 
 	short int** array = malloc(lines*sizeof(short int*));
@@ -82,7 +82,7 @@ void gol_array_read_input(gol_array* gol_ar)
 
 
 
-void gol_array_read_file(FILE* file, gol_array* gol_ar)
+void gol_array_read_file(char* filename, gol_array* gol_ar)
 {
 	short int** array = gol_ar->array;
 	int N = gol_ar->lines;
@@ -92,6 +92,14 @@ void gol_array_read_file(FILE* file, gol_array* gol_ar)
 	char copy[100];
 	int counter = 0;
 	int successful = 0;
+
+	FILE* file = fopen(filename, "r");
+
+	if (file == NULL) 
+	{
+		printf("Error opening file\n");
+		return -1;
+	}
 
 	while (1)
 	{
@@ -147,8 +155,8 @@ void gol_array_read_file(FILE* file, gol_array* gol_ar)
 	}
 
 	printf("\nSuccesfully read %d coordinates\n", successful);
+	fclose(file);
 }
-
 
 
 void gol_array_generate(gol_array* gol_ar)

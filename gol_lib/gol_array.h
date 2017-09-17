@@ -21,7 +21,7 @@ typedef struct gol_array gol_array;
 gol_array* gol_array_init(int lines, int columns);
 void gol_array_free(gol_array** gol_ar);
 void gol_array_read_input(gol_array* gol_ar);
-void gol_array_read_file(FILE* file, gol_array* gol_ar);
+void gol_array_read_file(char* filename, gol_array* gol_ar);
 void gol_array_generate(gol_array* gol_ar);
 
 #endif
