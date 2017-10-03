@@ -1,5 +1,5 @@
 OBJS = gol.o gol_mpi.o
-SOURCE = gol.c
+SOURCE = gol.c gol_mpi.c
 HEADER =
 CC = gcc
 MPICC = mpicc

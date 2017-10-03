@@ -98,7 +98,7 @@ void gol_array_read_file(char* filename, gol_array* gol_ar)
 	if (file == NULL) 
 	{
 		printf("Error opening file\n");
-		return -1;
+		return;
 	}
 
 	while (1)

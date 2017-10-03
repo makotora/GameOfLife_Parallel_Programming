@@ -9,6 +9,7 @@
 #include "./gol_lib/gol_array.h"
 #include "./gol_lib/functions.h"
 
+#define DEBUG 1
 #define PRINT_INITIAL 0
 #define PRINT_STEPS 0
 #define DEFAULT_N 420
@@ -30,23 +31,32 @@ int main(int argc, char* argv[])
 	gol_array* ga2;
 	int i, j;
 
+	/* SECTION A
+		MPI Initialize
+		Blocks computation
+		Matrix allocation, initialization and 'scatter' to processes
+		Column derived data type
+	*/
+
 	//MPI init
 	char* filename;
-	int rank, processors;
+	int my_rank, processors;
 	int tag = 201049;
 	MPI_Status status;
 	int coordinates[2];
 
 	MPI_Init (&argc, &argv);
-  	MPI_Comm_rank (MPI_COMM_WORLD, &rank);
-  	MPI_Comm_size (MPI_COMM_WORLD, &processors);
+	MPI_Comm_size(MPI_COMM_WORLD, &processors);
+	MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
 
+  	//Read matrix size and game of life grid
+  	//Or use default values and randomly generate a game if no arguments are given
 	if (argc != 3 && argc != 4)
 	{
 		N = DEFAULT_N;
 		M = DEFAULT_M;
 
-		if (rank == 0)
+		if (my_rank == 0)
 		{
 			printf("Running with default matrix size\n");
 			printf("Usage 1: 'mpiexec -n <process_num> ./gol_mpi <filename> <N> <M>'\n");
@@ -57,7 +67,23 @@ int main(int argc, char* argv[])
 	{
 		N = atoi(argv[argc-2]);
 		M = atoi(argv[argc-1]);
+
+		if (my_rank == 0)
+		{
+			if (N == 0 || M == 0)
+			{
+				printf("Invalid arguments given!");	
+				printf("Usage 1: 'mpiexec -n <process_num> ./gol_mpi <filename> <N> <M>'\n");
+				printf("Usage 2: 'mpiexec -n <process_num> ./gol_mpi <N> <M>'\n");
+				printf("Aborting...\n");
+				MPI_Abort(MPI_COMM_WORLD, -1);
+			}
+		}
 	}
+
+
+	if (my_rank == 0)
+		printf("N = %d\nM = %d\n", N, M);
 
 	//Calculate block properties
 	int processors_sqrt = sqrt(processors);
@@ -66,41 +92,14 @@ int main(int argc, char* argv[])
 	int blocks_per_row = N / rows_per_block;
 	int blocks_per_col = M / cols_per_block;
 
-	//Calculate this process's boundaries
-	int row_start, row_end, col_start, col_end;
-  	
-  	row_start = (rank / blocks_per_row) * rows_per_block;
-  	row_end = row_start + rows_per_block;
-  	col_start = (rank % blocks_per_col) * cols_per_block;
-  	col_end = col_start + cols_per_block;
-
-  	//allocate and init two NxM gol_arrays
+	//allocate and init two NxM gol_arrays
 	ga1 = gol_array_init(N, M);
 	ga2 = gol_array_init(N, M);
 
-	//DEBUG PRINT FOR BOUNDARIES (only master prints it)
-	if (rank == 0)
-	{
-		for (i=0; i<processors; i++)
-		{
-			int row_start, row_end, col_start, col_end;
-	  		
-	  		row_start = (i / blocks_per_row) * rows_per_block;
-	  		row_end = row_start + rows_per_block;
-	  		col_start = (i % blocks_per_col) * cols_per_block;
-	  		col_end = col_start + cols_per_block;
-			
-			printf("%d: rows [%d-%d) cols [%d-%d)\n", i, row_start, row_end, col_start, col_end);
-		}
-	}
-
-	if (rank == 0)
-		printf("N = %d\nM = %d\n", N, M);
-
-	//for master process only
-  	if (rank == 0) 
+	//read/generate game of life array
+	//'scatter' game matrix (send the coordinates to the correct process)
+  	if (my_rank == 0) 
   	{
-  		//read or generate game board, and send the coordinates to the correct process
 
 		if (argc == 2 || argc == 4) 
 		{
@@ -145,42 +144,182 @@ int main(int argc, char* argv[])
   		}
   	}
 
-  	sleep(rank);
-  	printf("PROCESS %d ARRAY\n", rank);
-  	int r,c;
+	//Define our column derived data type
+	MPI_Datatype derived_type_column;
 
-	for (r=row_start; r<row_end; r++)
-	{
-		putchar('|');
+	MPI_Type_vector(N,    
+	   1,                  
+	   M,         
+	   MPI_SHORT,       
+	   &derived_type_column);       
 
-		for (c=col_start; c<col_end; c++)
+	MPI_Type_commit(&derived_type_column);
+
+
+	/* SECTION B
+		Create our virtual topology
+		For the current proccess in the new topology
+			Find the ranks of its 8 neighbours
+			Calculate its piece/boundaries of the game matrix 
+	*/
+
+  	//Create our virtual topology
+  	MPI_Comm virtual_comm;
+  	int ndimansions, reorder;
+  	int dimansion_size[2], periods[2];
+  	ndimansions = 2;
+  	dimansion_size[0] = blocks_per_row;
+  	dimansion_size[1] = blocks_per_col;
+  	periods[0] = 1;
+  	periods[1] = 1;
+  	reorder = 1;
+
+  	int ret = MPI_Cart_create(MPI_COMM_WORLD, ndimansions, dimansion_size, periods, reorder, &virtual_comm);
+
+  	//find neighbour processes ranks
+  	int rank_u, rank_d, rank_r, rank_l;
+  	int rank_ur,  rank_ul ,rank_dr, rank_dl;
+  	int neighbour_coords[2];
+  	int my_coords[2];
+
+  	if (ret == MPI_COMM_NULL) 
+  	{
+  		printf("Process %d wont be included in this game of life.\n", my_rank);
+  		printf("The grid is smaller than available processes!\n");
+  		printf("Aborting.. Try different numbers for better results!\n");
+  		MPI_Abort(MPI_COMM_WORLD, -2);
+  	}
+  	else //get this process's rank and coords
+  	{
+  		//get this process's coordinates in the virtual topology
+  		ret = MPI_Cart_coords(virtual_comm, my_rank, ndimansions, my_coords);
+
+  		printf("Process %d : My coords are %d - %d\n", my_rank, my_coords[0], my_coords[1]);
+
+  		//get the ranks of this process's (8) neighbours
+  		neighbour_coords[0] = my_coords[0] - 1;
+  		neighbour_coords[1] = my_coords[1];
+  		ret = MPI_Cart_rank(virtual_comm, neighbour_coords, &rank_u);
+
+  		neighbour_coords[0] = my_coords[0] + 1;
+  		neighbour_coords[1] = my_coords[1];
+  		ret = MPI_Cart_rank(virtual_comm, neighbour_coords, &rank_d);
+
+  		neighbour_coords[0] = my_coords[0];
+  		neighbour_coords[1] = my_coords[1] + 1;
+  		ret = MPI_Cart_rank(virtual_comm, neighbour_coords, &rank_r);
+
+  		neighbour_coords[0] = my_coords[0];
+  		neighbour_coords[1] = my_coords[1] - 1;
+  		ret = MPI_Cart_rank(virtual_comm, neighbour_coords, &rank_l);
+
+  		neighbour_coords[0] = my_coords[0] - 1;
+  		neighbour_coords[1] = my_coords[1] + 1;
+  		ret = MPI_Cart_rank(virtual_comm, neighbour_coords, &rank_ur);
+
+  		neighbour_coords[0] = my_coords[0] - 1;
+  		neighbour_coords[1] = my_coords[1] - 1;
+  		ret = MPI_Cart_rank(virtual_comm, neighbour_coords, &rank_ul);
+
+  		neighbour_coords[0] = my_coords[0] + 1;
+  		neighbour_coords[1] = my_coords[1] + 1;
+  		ret = MPI_Cart_rank(virtual_comm, neighbour_coords, &rank_dr);
+
+  		neighbour_coords[0] = my_coords[0] + 1;
+  		neighbour_coords[1] = my_coords[1] - 1;
+  		ret = MPI_Cart_rank(virtual_comm, neighbour_coords, &rank_dl);
+
+  		if (DEBUG)
+	  	{
+	  		printf("Process %d : My coords are %d - %d\nNeighbours of %d: %d %d %d %d %d %d %d %d", my_rank, my_coords[0], my_coords[1], my_rank, rank_u, rank_d, rank_r, rank_l, rank_ur, rank_ul, rank_dr, rank_dl);
+	  	}
+	}
+
+  	//Calculate this process's boundaries
+	int row_start, row_end, col_start, col_end;
+  	
+  	//we use the process's coordinates instead of its rank
+  	//because mpi might have reordered the processes for better performance (virtual topology)
+  	row_start = my_coords[0] * rows_per_block;
+  	row_end = row_start + rows_per_block;
+  	col_start = my_coords[1] * cols_per_block;
+  	col_end = col_start + cols_per_block;
+
+	//DEBUG PRINT FOR BOUNDARIES (only master prints it)
+	if (DEBUG)
+  	{
+		if (my_rank == 0)
 		{
-			if (ga1->array[r][c] == 1)
-				putchar('o');
-			else
-				putchar(' ');
+			int proccess_rank;
+			int row_start, row_end, col_start, col_end;
+			int i, j;
+	  		
+	  		for (i = 0; i < blocks_per_row; i++)
+	  		{
+	  			for (j = 0; j < blocks_per_col; j++)
+	  			{
+				  	row_start = i * rows_per_block;
+				  	row_end = row_start + rows_per_block;
+				  	col_start = j * cols_per_block;
+				  	col_end = col_start + cols_per_block;
 
-			putchar('|');
+				  	neighbour_coords[0] = i;
+				  	neighbour_coords[1] = j;
+				  	ret = MPI_Cart_rank(virtual_comm, neighbour_coords, &proccess_rank);
+			
+					printf("%d: rows [%d-%d) cols [%d-%d)\n", proccess_rank, row_start, row_end, col_start, col_end);
+	  			}
+	  		}
+		}
+	}
+
+  	//DEBUG PRINT FOR ARRAY SCATTER
+  	if (DEBUG)
+  	{
+  		char outname[20];
+  		sprintf(outname, "test_outs/out_%d", my_rank);
+
+  		FILE* out = fopen(outname, "w");
+
+	  	fprintf(out, "PROCESS %d ARRAY\n", my_rank);
+	  	int r,c;
+
+		for (r=row_start; r<row_end; r++)
+		{
+			fputc('|', out);
+
+			for (c=col_start; c<col_end; c++)
+			{
+				if (ga1->array[r][c] == 1)
+					fputc('o', out);
+				else
+					fputc(' ', out);
+
+				fputc('|', out);
+			}
+
+			fputc('\n', out);
 		}
 
-		putchar('\n');
+		fclose(out);
 	}
 
 	MPI_Barrier(MPI_COMM_WORLD);
 
-  	//Commented below prints because they are shown in random order
-  	//And that is not very helpfull
+	/* SECTION C
+		Game of life loop
+			x8 MPI_ISend
+			x8 MPI_IRecv
+			Calculate 'inner' cells
+			Wait for IRecvs to complete
+			Calculate 'outer' cells
+			MPI_Reduce for master to see if there was a change or not
+			If (change && repeats < max_repeats)
+				repeat
+			else
+				finish
+	*/
 
-  	// printf("--------------\n");
-  	// printf("Process %d\n", rank);
-  	// printf("ROWS: %d to %d\n", row_start, row_end);
-  	// printf("COLS: %d to %d\n", col_start, col_end);
-  	// printf("--------------\n\n");
-
-
-  	int p_ul,p_u,p_ur,p_l,p_r,p_dl,p_d,p_dr;
-
-	//Game of life LOOP
 	int count = 0;
 	int no_change;
 
@@ -213,7 +352,7 @@ int main(int argc, char* argv[])
 		}
 
 		//only the master process prints
-		if (PRINT_STEPS && rank == 0) {
+		if (PRINT_STEPS && my_rank == 0) {
 			print_array(array2, N, M);
 			putchar('\n');
 		}
@@ -231,7 +370,8 @@ int main(int argc, char* argv[])
 	}
 
 
-	if (rank == 0) {
+	if (my_rank == 0) 
+	{
 		if (no_change == 0)
 		{
 			printf("Max loop number (%d) was reached. Terminating Game of Life\n", max_loops);
@@ -401,7 +541,7 @@ void gol_array_generate_and_scatter(gol_array* gol_ar, int processors,
 		row_of_block = x / rows_per_block;
 		col_of_block = y / cols_per_block;
 		destination_process = row_of_block * blocks_per_row + col_of_block;
-		//printf("(%d,%d) should go to process %d\n", row-1,col-1,destination_process);
+		// printf("(%d,%d) should go to process %d\n", x,y,destination_process);
 
 		//if its for the master process
 		if (destination_process == 0)
