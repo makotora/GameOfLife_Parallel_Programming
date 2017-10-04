@@ -8,13 +8,16 @@
 
 #define WAIT_FOR_ENTER 0
 #define PRINT_STEPS 0
+#define DEFAULT_N 420
+#define DEFAULT_M 420
+#define MAX_LOOPS 200
 
 int main(int argc, char* argv[])
 {
 	//the following can be also given by the user (to do)
-	int N = 19;
-	int M = 70;
-	int max_loops = 200;
+	int N = 36;
+	int M = 36;
+	int max_loops = MAX_LOOPS;
 
 	gol_array* temp;//for swaps;
 	gol_array* ga1;
@@ -27,7 +30,34 @@ int main(int argc, char* argv[])
 
 	char* filename = NULL;
 
-	if (argc > 1)
+	//Read matrix size and game of life grid
+  	//Or use default values and randomly generate a game if no arguments are given
+	if (argc != 3 && argc != 4)
+	{
+		N = DEFAULT_N;
+		M = DEFAULT_M;
+
+		printf("Running with default matrix size\n");
+		printf("Usage 1: './gol <filename> <N> <M>'\n");
+		printf("Usage 2: './gol <N> <M>'\n");
+		printf("Usage 3: './gol <filename>'\n");
+	}
+	else
+	{
+		N = atoi(argv[argc-2]);
+		M = atoi(argv[argc-1]);
+
+		if (N == 0 || M == 0)
+		{
+			printf("Invalid arguments given!");	
+			printf("Usage 1: './gol <filename> <N> <M>'\n");
+			printf("Usage 2: './gol <N> <M>'\n");
+			printf("Usage 3: './gol <filename>'\n");
+			printf("Aborting...\n");
+		}
+	}
+
+	if (argc == 2 || argc == 4)
 	{
 		filename = argv[1];
 		gol_array_read_file(filename, ga1);
@@ -105,6 +135,8 @@ int main(int argc, char* argv[])
 	}
 
 	printf("Time elapsed: %ld seconds\n", time(NULL) - start);
+
+	print_array(ga1->array, N, M);
 
 	//free arrays
 	gol_array_free(&ga1);

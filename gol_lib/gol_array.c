@@ -190,7 +190,7 @@ void gol_array_generate(gol_array* gol_ar)
 		x = rand() % lines;
 		y = rand() % columns;
 
-		fprintf(file, "%d %d\n", x, y);
+		fprintf(file, "%d %d\n", x+1, y+1);
 		array[x][y] = 1;
 	}
 
