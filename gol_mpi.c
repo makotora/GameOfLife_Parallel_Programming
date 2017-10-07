@@ -556,7 +556,7 @@ int main(int argc, char* argv[])
 				if (my_rank && STATUS) 
 					printf("Terminating because there was no change at loop number %d\n", count);
 
-				MPI_Abort(MPI_COMM_WORLD, -1);
+				break;
 			}
 
 		}
