@@ -10,8 +10,8 @@
 #include "./gol_lib/functions.h"
 
 #define DEBUG 0
-#define INFO 1
-#define STATUS 1
+#define INFO 0
+#define STATUS 0
 #define TIME 1
 #define PRINT_INITIAL 0
 #define PRINT_STEPS 0
@@ -153,13 +153,14 @@ int main(int argc, char* argv[])
 		i = 2;
 		while ( i < (processors / 2) )
 		{
-			div = processors / (float) i;
+			div = (float) processors / (float) i;
 
 			if (floor(div) == div)
 			{
-				if ( (int) div <= last_div_ok ||
-				 (processors / div) >= (processors / last_div_ok) || div == last_div_ok )
+				if ( ( abs((int) div - (int) (processors / div)) >= abs((int) last_div_ok - (int) (processors / last_div_ok)) )
+					|| div == last_div_ok ) {
 					break;
+				}
 
 				last_div_ok = (int) div;
 			}
@@ -172,7 +173,7 @@ int main(int argc, char* argv[])
 			printf("Warning, could processors num is a prime number and can't be devided well\n");
 		}
 
-		line_div = processors / last_div_ok;
+		line_div = last_div_ok;
 		col_div = processors / line_div;
 	}
 
@@ -181,8 +182,10 @@ int main(int argc, char* argv[])
 	int blocks_per_row = N / rows_per_block;
 	int blocks_per_col = M / cols_per_block;
 
-	if (INFO)
+	if (INFO && my_rank == 0)
 	{
+		printf("line div : %d\n", line_div);
+		printf("col div : %d\n", col_div);
 		printf("rows_per_block: %d\n", rows_per_block);
 		printf("cols_per_block: %d\n", cols_per_block);
 	}
@@ -485,7 +488,7 @@ int main(int argc, char* argv[])
 
 	double start, finish;
 
-	if (STATUS)
+	if (STATUS && my_rank == 0)
 		printf("Starting the Game of Life\n");
 
 	start = MPI_Wtime();
@@ -591,13 +594,13 @@ int main(int argc, char* argv[])
 	local_elapsed = finish - start;
 
 	if (INFO)
-		printf("Process %d > Time elapsed: %e seconds\n", my_rank, local_elapsed);
+		printf("Process %d > Time elapsed: %f seconds\n", my_rank, local_elapsed);
 
 	//reduce to check if the array has changed every reduce_rate loops
 	MPI_Reduce(&local_elapsed, &elapsed, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
 
-	if (TIME)
-		printf("Time elapsed: %e seconds\n", elapsed);		
+	if (TIME && my_rank == 0)
+		printf("Time elapsed: %f seconds\n", elapsed);		
 
 	//Gather the whole (final) gol array into master so he can print it out
 	gol_array_gather(array1, my_rank, processors, row_start, row_end, col_start, col_end);
@@ -694,7 +697,7 @@ void gol_array_read_file_and_scatter(char* filename, gol_array* gol_ar, int proc
 
 		row_of_block = (row - 1) / rows_per_block;
 		col_of_block = (col - 1) / cols_per_block;
-		destination_process = row_of_block * blocks_per_row + col_of_block;
+		destination_process = row_of_block + col_of_block * blocks_per_row;
 		// printf("(%d,%d) should go to process %d\n", row-1,col-1,destination_process);
 
 		//if its for the master process
@@ -719,7 +722,8 @@ void gol_array_read_file_and_scatter(char* filename, gol_array* gol_ar, int proc
 		MPI_Send(coordinates, 2, MPI_INT, i, tag, MPI_COMM_WORLD);
 
 
-	printf("\nSuccesfully read %d coordinates\n", successful);
+	if (INFO)
+		printf("\nSuccesfully read %d coordinates\n", successful);
 	fclose(file);
 }
 
@@ -761,11 +765,11 @@ void gol_array_generate_and_scatter(gol_array* gol_ar, int processors,
 		x = rand() % lines;
 		y = rand() % columns;
 
-		fprintf(file, "%d %d\n", x, y);
+		fprintf(file, "%d %d\n", x+1, y+1);
 
 		row_of_block = x / rows_per_block;
 		col_of_block = y / cols_per_block;
-		destination_process = row_of_block * blocks_per_row + col_of_block;
+		destination_process = row_of_block + col_of_block*blocks_per_row;
 		// printf("(%d,%d) should go to process %d\n", x,y,destination_process);
 
 		//if its for the master process
