@@ -9,12 +9,17 @@
 #include "./gol_lib/gol_array.h"
 #include "./gol_lib/functions.h"
 
-#define DEBUG 1
+#define DEBUG 0
+#define INFO 1
+#define STATUS 1
+#define TIME 1
 #define PRINT_INITIAL 0
 #define PRINT_STEPS 0
+#define PRINT_FINAL 0
 #define DEFAULT_N 420
 #define DEFAULT_M 420
 #define MAX_LOOPS 200
+#define REDUCE_RATE 1
 
 void gol_array_read_file_and_scatter(char* filename, gol_array* gol_ar, int processors,
 										int rows_per_block, int cols_per_block, int blocks_per_row);
@@ -27,7 +32,8 @@ int main(int argc, char* argv[])
 {
 	//the following can be also given by the user (to do)
 	int N,M;
-	int max_loops = MAX_LOOPS;
+	int max_loops = -1;
+	int reduce_rate = -1;
 
 	gol_array* ga1;
 	gol_array* ga2;
@@ -41,60 +47,145 @@ int main(int argc, char* argv[])
 	*/
 
 	//MPI init
-	char* filename;
 	int my_rank, processors;
 	int tag = 201049;
 	MPI_Status status;
 	int coordinates[2];
+	char* filename = NULL;
 
 	MPI_Init (&argc, &argv);
 	MPI_Comm_size(MPI_COMM_WORLD, &processors);
 	MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
 
+	N = -1;
+	M = -1;
+
   	//Read matrix size and game of life grid
   	//Or use default values and randomly generate a game if no arguments are given
-	if (argc != 3 && argc != 4)
+	i = 0;
+  	while (++i < argc)
+  	{
+  		if ( !strcmp(argv[i], "-f") )
+  		{
+  			filename = argv[i+1];
+  			i++;
+  		}
+  		else if ( !strcmp(argv[i], "-l") )
+  		{
+  			N = atoi(argv[i+1]);
+  			i++;
+  		}
+  		else if ( !strcmp(argv[i], "-c") )
+  		{
+  			M = atoi(argv[i+1]);
+  			i++;
+  		}
+  		else if ( !strcmp(argv[i], "-m") )
+  		{
+  			max_loops = atoi(argv[i+1]);
+  			i++;
+  		}
+  		else if ( !strcmp(argv[i], "-r") )
+  		{
+  			reduce_rate = atoi(argv[i+1]);
+  			i++;
+  		}
+  	}
+	if (N == -1 || M == -1)
 	{
 		N = DEFAULT_N;
 		M = DEFAULT_M;
 
-		if (my_rank == 0)
+		if (INFO && my_rank == 0)
 		{
-			printf("Running with default matrix size\n");
-			printf("Usage 1: 'mpiexec -n <process_num> ./gol_mpi <filename> <N> <M>'\n");
-			printf("Usage 2: 'mpiexec -n <process_num> ./gol_mpi <N> <M>'\n");
-			printf("Usage 3: 'mpiexec -n <process_num> ./gol_mpi <filename>'\n");
+			printf("Running with default matrix size %dx%d\n", N, M);
+			printf("Usage : 'mpiexec -n <process_num> ./gol_mpi -f <filename> -l <N> -c <M> -n <max_loops> -r <reduce_rate>'\n");
 		}
 	}
 	else
 	{
-		N = atoi(argv[argc-2]);
-		M = atoi(argv[argc-1]);
-
-		if (my_rank == 0)
+		if (INFO && my_rank == 0)
 		{
 			if (N == 0 || M == 0)
 			{
 				printf("Invalid arguments given!");	
-				printf("Usage 1: 'mpiexec -n <process_num> ./gol_mpi <filename> <N> <M>'\n");
-				printf("Usage 2: 'mpiexec -n <process_num> ./gol_mpi <N> <M>'\n");
-				printf("Usage 3: 'mpiexec -n <process_num> ./gol_mpi <filename>'\n");
+				printf("Usage : 'mpiexec -n <process_num> ./gol_mpi -f <filename> -l <N> -c <M> -n <max_loops> -r <reduce_rate>'\n");
 				printf("Aborting...\n");
 				MPI_Abort(MPI_COMM_WORLD, -1);
 			}
 		}
 	}
 
+	if (max_loops == -1)
+	{
+		max_loops = MAX_LOOPS;
+		
+		if ( INFO && my_rank == 0 )
+			printf("Running with default max loops %d\n", max_loops);
+	}
 
-	if (my_rank == 0)
+	if (reduce_rate == -1)
+	{
+		reduce_rate = REDUCE_RATE;
+		
+		if ( INFO && my_rank == 0 )
+			printf("Running with default reduce rate %d\n", reduce_rate);
+	}
+
+
+	if (my_rank == 0 && INFO)
 		printf("N = %d\nM = %d\n", N, M);
 
 	//Calculate block properties
-	int processors_sqrt = sqrt(processors);
-	int rows_per_block = N / processors_sqrt;
-	int cols_per_block = M / processors_sqrt;
+	int line_div, col_div;
+	double processors_sqrt = sqrt(processors);
+	double div;
+	int last_div_ok;
+
+	if (processors_sqrt == floor(processors_sqrt))
+	{
+		line_div = processors_sqrt;
+		col_div = processors_sqrt;
+	}
+	else
+	{
+		last_div_ok = 1;
+		i = 2;
+		while ( i < (processors / 2) )
+		{
+			div = processors / (float) i;
+
+			if (floor(div) == div)
+			{
+				if ( (int) div <= last_div_ok ||
+				 (processors / div) >= (processors / last_div_ok) || div == last_div_ok )
+					break;
+
+				last_div_ok = (int) div;
+			}
+
+			i++;
+		}
+
+		if (last_div_ok == 1)
+		{
+			printf("Warning, could processors num is a prime number and can't be devided well\n");
+		}
+
+		line_div = processors / last_div_ok;
+		col_div = processors / line_div;
+	}
+
+	int rows_per_block = N / line_div;
+	int cols_per_block = M / col_div;
 	int blocks_per_row = N / rows_per_block;
 	int blocks_per_col = M / cols_per_block;
+
+	if (INFO)
+	{
+		printf("rows_per_block: %d\n", rows_per_block);
+		printf("cols_per_block: %d\n", cols_per_block);
+	}
 
 	//allocate and init two NxM gol_arrays
 	ga1 = gol_array_init(N, M);
@@ -105,15 +196,17 @@ int main(int argc, char* argv[])
   	if (my_rank == 0) 
   	{
 
-		if (argc == 2 || argc == 4) 
+		if (filename != NULL) 
 		{
-			filename = argv[1];
 			gol_array_read_file_and_scatter(filename, ga1, processors, rows_per_block, cols_per_block, blocks_per_row);
 		}
 		else 
-		{//no input file given, generate a random game array 
-			printf("No input file given as argument\n");
-			printf("Generating a random game of life array to play\n");
+		{//no input file given, generate a random game array
+			if (INFO)
+			{
+				printf("No input file given as argument\n");
+				printf("Generating a random game of life array to play\n");
+			}
 			gol_array_generate_and_scatter(ga1, processors, rows_per_block, cols_per_block, blocks_per_row);
 		}
 		
@@ -121,10 +214,8 @@ int main(int argc, char* argv[])
 		{
 			printf("Printing initial array:\n\n");
 			print_array(ga1->array, N, M);
+			putchar('\n');	
 		}
-		
-		putchar('\n');	
-		printf("Starting the Game of Life\n");
 
   	}
   	else //for other processes besides master
@@ -197,8 +288,6 @@ int main(int argc, char* argv[])
   	{
   		//get this process's coordinates in the virtual topology
   		ret = MPI_Cart_coords(virtual_comm, my_rank, ndimansions, my_coords);
-
-  		printf("Process %d : My coords are %d - %d\n", my_rank, my_coords[0], my_coords[1]);
 
   		//get the ranks of this process's (8) neighbours
   		neighbour_coords[0] = my_coords[0] - 1;
@@ -308,11 +397,9 @@ int main(int argc, char* argv[])
 		fclose(out);
 	}
 
-	MPI_Barrier(MPI_COMM_WORLD);
-
 	/* SECTION C
 		Define communication (requests) that will be made in EVERY loop with MPI_Init
-		Game of life loop
+		Game of life loop (with timing)
 			x8 MPI_ISend (MPI_Start)
 			x8 MPI_IRecv (MPI_Start)
 			Calculate 'inner' cells
@@ -391,9 +478,17 @@ int main(int argc, char* argv[])
 	int no_change;
 	int no_change_sum;
 
-	long int start = time(NULL);
 	int communication_type = 0;//switches between 0 and 1 after each loop
 	MPI_Status statuses[8];
+
+	MPI_Barrier(MPI_COMM_WORLD);
+
+	double start, finish;
+
+	if (STATUS)
+		printf("Starting the Game of Life\n");
+
+	start = MPI_Wtime();
 
 	for(count = 0; count < max_loops; count++) 
 	{
@@ -450,7 +545,18 @@ int main(int argc, char* argv[])
 				no_change = 0;
 
 
-		MPI_Allreduce(&no_change, &no_change_sum, 1, MPI_SHORT, MPI_SUM, virtual_comm);
+		if ( (count + 1) % REDUCE_RATE )
+		{			
+			MPI_Allreduce(&no_change, &no_change_sum, 1, MPI_SHORT, MPI_SUM, virtual_comm);
+			if (no_change_sum == 8 )
+			{
+				if (my_rank && STATUS) 
+					printf("Terminating because there was no change at loop number %d\n", count);
+
+				MPI_Abort(MPI_COMM_WORLD, -1);
+			}
+
+		}
 
 		//wait for sends
 		MPI_Waitall(8, send_request[communication_type], statuses);
@@ -459,11 +565,6 @@ int main(int argc, char* argv[])
 		if (PRINT_STEPS && my_rank == 0) {
 			print_array(array2, N, M);
 			putchar('\n');
-		}
-
-		if (no_change_sum == 8) {
-			printf("Terminating because there was no change at loop number %d\n", count);
-			break;
 		}
 
 		//swap arrays (array2 becomes array1)
@@ -478,18 +579,30 @@ int main(int argc, char* argv[])
 
 	if (my_rank == 0) 
 	{
-		if (no_change == 0)
+		if (my_rank == 0 && no_change == 0 && STATUS)
 		{
 			printf("Max loop number (%d) was reached. Terminating Game of Life\n", max_loops);
 		}
-
-		printf("Time elapsed: %ld seconds\n", time(NULL) - start);
 	}
+
+	finish = MPI_Wtime();
+
+	double local_elapsed, elapsed;
+	local_elapsed = finish - start;
+
+	if (INFO)
+		printf("Process %d > Time elapsed: %e seconds\n", my_rank, local_elapsed);
+
+	//reduce to check if the array has changed every reduce_rate loops
+	MPI_Reduce(&local_elapsed, &elapsed, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+
+	if (TIME)
+		printf("Time elapsed: %e seconds\n", elapsed);		
 
 	//Gather the whole (final) gol array into master so he can print it out
 	gol_array_gather(array1, my_rank, processors, row_start, row_end, col_start, col_end);
 
-	if (my_rank == 0)
+	if (my_rank == 0 && PRINT_FINAL)
 		print_array(array1, N, M);
 
 	//free arrays
