@@ -11,7 +11,7 @@
 
 #define DEBUG 0
 #define INFO 0
-#define STATUS 0
+#define STATUS 1
 #define TIME 1
 #define PRINT_INITIAL 0
 #define PRINT_STEPS 0
@@ -99,7 +99,7 @@ int main(int argc, char* argv[])
 		if (INFO && my_rank == 0)
 		{
 			printf("Running with default matrix size %dx%d\n", N, M);
-			printf("Usage : 'mpiexec -n <process_num> ./gol_mpi -f <filename> -l <N> -c <M> -n <max_loops> -r <reduce_rate>'\n");
+			printf("Usage : 'mpiexec -n <process_num> ./gol_mpi -f <filename> -l <N> -c <M> -n <max_loops> -r <reduce_rate>\n");
 		}
 	}
 	else
@@ -109,7 +109,7 @@ int main(int argc, char* argv[])
 			if (N == 0 || M == 0)
 			{
 				printf("Invalid arguments given!");	
-				printf("Usage : 'mpiexec -n <process_num> ./gol_mpi -f <filename> -l <N> -c <M> -n <max_loops> -r <reduce_rate>'\n");
+				printf("Usage : 'mpiexec -n <process_num> ./gol_mpi -f <filename> -l <N> -c <M> -n <max_loops> -r <reduce_rate>\n");
 				printf("Aborting...\n");
 				MPI_Abort(MPI_COMM_WORLD, -1);
 			}
@@ -168,7 +168,7 @@ int main(int argc, char* argv[])
 			i++;
 		}
 
-		if (last_div_ok == 1)
+		if (last_div_ok == 1 && processors != 2 && processors != 1)
 		{
 			printf("Warning, could processors num is a prime number and can't be devided well\n");
 		}
@@ -548,7 +548,7 @@ int main(int argc, char* argv[])
 				no_change = 0;
 
 
-		if ( (count + 1) % REDUCE_RATE )
+		if ( REDUCE_RATE > 0 && (count + 1) % REDUCE_RATE == 0)
 		{			
 			MPI_Allreduce(&no_change, &no_change_sum, 1, MPI_SHORT, MPI_SUM, virtual_comm);
 			if (no_change_sum == 8 )
@@ -600,13 +600,14 @@ int main(int argc, char* argv[])
 	MPI_Reduce(&local_elapsed, &elapsed, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
 
 	if (TIME && my_rank == 0)
-		printf("Time elapsed: %f seconds\n", elapsed);		
-
-	//Gather the whole (final) gol array into master so he can print it out
-	gol_array_gather(array1, my_rank, processors, row_start, row_end, col_start, col_end);
+		printf("Time elapsed: %f seconds\n", elapsed);
 
 	if (my_rank == 0 && PRINT_FINAL)
+	{
+		//Gather the whole (final) gol array into master so he can print it out
+		gol_array_gather(array1, my_rank, processors, row_start, row_end, col_start, col_end);
 		print_array(array1, N, M);
+	}
 
 	//free arrays
 	gol_array_free(&ga1);
