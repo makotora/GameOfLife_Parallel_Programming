@@ -1,0 +1,15 @@
+\begin{table}[]
+\centering
+\caption{My caption}
+\label{my-label}
+\begin{tabular}{|l|l|l|l|l|l|}
+\hline
+\textit{\textbf{size \textbackslash processors}} & \textit{\textbf{1}} & \textit{\textbf{2}} & \textit{\textbf{4}} & \textit{\textbf{8}} & \textit{\textbf{16}} \\ \hline
+\textit{\textbf{128  x 128}}                     & 0.902603            & 0.497823            & 0.477089            & 0.292184            & 0.957296             \\ \hline
+\textit{\textbf{256  x 256}}                     & 3.596160            & 1.816599            & 1.048347            & 0.678046            & 1.156213             \\ \hline
+\textit{\textbf{512  x 512}}                     & 14.417825           & 7.387163            & 3.858929            & 2.075757            & 2.696575             \\ \hline
+\textit{\textbf{1024 x 1024}}                    & 57.755004           & 29.398613           & 14.959850           & 7.545417            & 4.936497             \\ \hline
+\textit{\textbf{2048 x 2048}}                    & 416.464362          & 165.001508          & 69.308270           & 85.217432           & 21.392594            \\ \hline
+\textit{\textbf{4096 x 4096}}                    & 1068.252632         & 703.898145          & 361.591368          & 161.884114          & 94.790958            \\ \hline
+\end{tabular}
+\end{table}

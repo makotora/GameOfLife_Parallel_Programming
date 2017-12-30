@@ -2,6 +2,7 @@
 #include <assert.h>
 #include <string.h>
 #include <stdlib.h>
+#include <sys/stat.h>
 #include <math.h>
 
 #include <omp.h>
@@ -12,7 +13,7 @@
 #include "./gol_lib/functions.h"
 
 #define DEBUG 0
-#define INFO 0
+#define INFO 1
 #define STATUS 1
 #define TIME 1
 #define PRINT_INITIAL 0
@@ -103,7 +104,6 @@ int main(int argc, char* argv[])
   	}
 
 	omp_set_num_threads(openmp_threads);
-	printf("Running hybrid MPI + OPENMP with %d threads\n", openmp_threads);
 
 	if (N == -1 || M == -1)
 	{
@@ -113,17 +113,17 @@ int main(int argc, char* argv[])
 		if (INFO && my_rank == 0)
 		{
 			printf("Running with default matrix size %dx%d\n", N, M);
-			printf("Usage : 'mpiexec -n <process_num> ./gol_mpi -f <filename> -l <N> -c <M> -n <max_loops> -r <reduce_rate>\n");
+			printf("Usage : 'mpiexec -n <process_num> ./gol_mpi_openmp -f <filename> -l <N> -c <M> -n <max_loops> -r <reduce_rate> -t <threads>\n");
 		}
 	}
 	else
 	{
-		if (INFO && my_rank == 0)
+		if (my_rank == 0)
 		{
 			if (N == 0 || M == 0)
 			{
 				printf("Invalid arguments given!");	
-				printf("Usage : 'mpiexec -n <process_num> ./gol_mpi -f <filename> -l <N> -c <M> -n <max_loops> -r <reduce_rate>\n");
+				printf("Usage : 'mpiexec -n <process_num> ./gol_mpi_openmp -f <filename> -l <N> -c <M> -n <max_loops> -r <reduce_rate> -t <threads>\n");
 				printf("Aborting...\n");
 				MPI_Abort(MPI_COMM_WORLD, -1);
 			}
@@ -182,9 +182,9 @@ int main(int argc, char* argv[])
 			i++;
 		}
 
-		if (last_div_ok == 1 && processors != 2 && processors != 1)
+		if (my_rank == 0 && last_div_ok == 1 && processors != 2 && processors != 1)
 		{
-			printf("Warning, could processors num is a prime number and can't be devided well\n");
+			printf("Warning, processors num is a prime number and the matrix can't be devided well\n");
 		}
 
 		line_div = last_div_ok;
@@ -422,16 +422,11 @@ int main(int argc, char* argv[])
 			Calculate 'inner' cells
 			Wait for IRecvs to complete
 			Calculate 'outer' cells
-			MPI_Reduce for master to see if there was a change or not
+			MPI_Alleduce for master to see if there was a change or not
 			If (change && repeats < max_repeats)
 				repeat
 			else
 				finish
-			------------------------------------------------------------------------------
-			The following is kind of optional. We could just always finish after max_loops loops
-			MPI_Reduce to count no_change 
-			Wait message from master to see if current process continues or not
-			------------------------------------------------------------------------------
 			Wait for ISends to complete (it will return immediatly if the above is used)
 	*/
 
@@ -601,7 +596,7 @@ int main(int argc, char* argv[])
 		if ( REDUCE_RATE > 0 && (count + 1) % REDUCE_RATE == 0)
 		{			
 			MPI_Allreduce(&no_change, &no_change_sum, 1, MPI_SHORT, MPI_SUM, virtual_comm);
-			if (no_change_sum == 8 )
+			if (no_change_sum == processors)
 			{
 				if (my_rank && STATUS) 
 					printf("Terminating because there was no change at loop number %d\n", count);
@@ -787,6 +782,7 @@ void gol_array_generate_and_scatter(gol_array* gol_ar, int processors,
 
 	get_date_time_str(datestr, timestr);
 	char filename[36];
+	mkdir("generated_tests", 0777);
 	sprintf(filename, "generated_tests/rga_%s_%s", datestr, timestr);
 	
 	FILE* file = fopen(filename, "w");

@@ -1,0 +1,72 @@
+2017-10-08-14-05-23 Size: 2048 Max loops: 500 Reduce rate: 20
+
+
+1 processors with reduce
+Time elapsed: 380.985183 seconds
+
+1 processors without reduce
+Time elapsed: 527.369748 seconds
+
+2 processors with reduce
+Time elapsed: 518.695249 seconds
+
+2 processors without reduce
+Time elapsed: 212.431191 seconds
+
+4 processors with reduce
+Time elapsed: 160.608234 seconds
+
+4 processors without reduce
+Error opening file
+
+===================================================================================
+=   BAD TERMINATION OF ONE OF YOUR APPLICATION PROCESSES
+=   PID 12927 RUNNING AT linux02
+=   EXIT CODE: 255
+=   CLEANING UP REMAINING PROCESSES
+=   YOU CAN IGNORE THE BELOW CLEANUP MESSAGES
+===================================================================================
+
+8 processors with reduce
+Error opening file
+
+===================================================================================
+=   BAD TERMINATION OF ONE OF YOUR APPLICATION PROCESSES
+=   PID 12938 RUNNING AT linux02
+=   EXIT CODE: 255
+=   CLEANING UP REMAINING PROCESSES
+=   YOU CAN IGNORE THE BELOW CLEANUP MESSAGES
+===================================================================================
+
+8 processors without reduce
+Error opening file
+
+===================================================================================
+=   BAD TERMINATION OF ONE OF YOUR APPLICATION PROCESSES
+=   PID 12947 RUNNING AT linux02
+=   EXIT CODE: 255
+=   CLEANING UP REMAINING PROCESSES
+=   YOU CAN IGNORE THE BELOW CLEANUP MESSAGES
+===================================================================================
+
+16 processors with reduce
+Error opening file
+
+===================================================================================
+=   BAD TERMINATION OF ONE OF YOUR APPLICATION PROCESSES
+=   PID 12960 RUNNING AT linux02
+=   EXIT CODE: 255
+=   CLEANING UP REMAINING PROCESSES
+=   YOU CAN IGNORE THE BELOW CLEANUP MESSAGES
+===================================================================================
+
+16 processors without reduce
+Error opening file
+
+===================================================================================
+=   BAD TERMINATION OF ONE OF YOUR APPLICATION PROCESSES
+=   PID 12975 RUNNING AT linux02
+=   EXIT CODE: 255
+=   CLEANING UP REMAINING PROCESSES
+=   YOU CAN IGNORE THE BELOW CLEANUP MESSAGES
+===================================================================================

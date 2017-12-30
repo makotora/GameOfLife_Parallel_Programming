@@ -6,9 +6,9 @@ MPICC = mpicc
 OPENMP_MPICC = mpicc -fopenmp
 CFLAGS= -c -Wall
 LFLAGS= -Wall
-OUT = gol gol_mpi gol_mpi_openmp
+OUT = gol gol_mpi gol_mpi_openmp gol_cuda
 
-all: gol gol_mpi gol_mpi_openmp
+all: gol gol_mpi gol_mpi_openmp gol_cuda
 
 gol: gol.o gol_lib_make
 	$(CC) $(LFLAGS) gol.o ./gol_lib/gol_array.o ./gol_lib/functions.o -o gol
@@ -31,5 +31,7 @@ gol_lib_make:
 gol_lib_clean:
 	cd gol_lib && make clean && cd ..
 
+gol_cuda: gol_cuda.cu gol_lib_make
+	nvcc gol_cuda.cu gol_lib/functions.o gol_lib/gol_array.o -o gol_cuda
 count:
 	wc $(SOURCE) $(HEADER)

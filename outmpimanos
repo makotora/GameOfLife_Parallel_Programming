@@ -1,0 +1,96 @@
+N = 8
+M = 8
+line div : 2
+col div : 2
+rows_per_block: 4
+cols_per_block: 4
+
+Succesfully read 20 coordinates
+Printing initial array:
+
+| | |o| | | | | |
+| |o|o| | | | | |
+| | | | | | | | |
+| |o|o| | | | | |
+| | | | |o|o| | |
+| | | | | | | | |
+| | | | | | |o| |
+| | | | |o| | | |
+
+Starting the Game of Life
+| |o|o|o| | | | |
+| |o|o| | | | | |
+| | | | | | | | |
+| | | | | | | | |
+| | | | | | | | |
+| | | | | |o| | |
+| | | | | | | | |
+| | | | | | | | |
+
+| |o| |o| | | | |
+| |o| |o| | | | |
+| | | | | | | | |
+| | | | | | | | |
+| | | | |o|o| | |
+| | | | | | | | |
+| | | | | | |o| |
+| | |o| |o| | | |
+
+| |o| |o| | | | |
+| | | | | | | | |
+| | | | | | | | |
+| | | | | | | | |
+| | | | | | | | |
+| | | | | |o| | |
+| | | | | | | | |
+| | |o| | | | | |
+
+| | |o| | | | | |
+| | | | | | | | |
+| | | | | | | | |
+| | | | | | | | |
+| | | | | |o| | |
+| | | | | | | | |
+| | | | | | |o| |
+| | |o| | | | | |
+
+| | | | | | | | |
+| | | | | | | | |
+| | | | | | | | |
+| | | | | | | | |
+| | | | | | | | |
+| | | | | |o| | |
+| | | | | | | | |
+| | |o| | | | | |
+
+Process 0 > Time elapsed: 0.018281 seconds
+Time elapsed: 0.061065 seconds
+| | | | | | | | |
+| | | | | | | | |
+| | | | | | | | |
+| | | | | | | | |
+| | | | | | | | |
+| | | | | |o| | |
+| | | | | | | | |
+| | | | | | | | |
+
+
+
+
+
+Terminating because there was no change at loop number 5
+Process 1 > Time elapsed: 0.049073 seconds
+
+
+
+
+
+Terminating because there was no change at loop number 5
+Process 2 > Time elapsed: 0.061065 seconds
+
+
+
+
+
+Terminating because there was no change at loop number 5
+Process 3 > Time elapsed: 0.057069 seconds

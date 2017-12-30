@@ -1,0 +1,32 @@
+2017-10-08-13-43-05 Size: 1024 Max loops: 500 Reduce rate: 20
+
+
+1 processors with reduce
+Time elapsed: 196.065441 seconds
+
+1 processors without reduce
+Time elapsed: 93.341535 seconds
+
+2 processors with reduce
+Time elapsed: 98.152012 seconds
+
+2 processors without reduce
+Time elapsed: 79.660734 seconds
+
+4 processors with reduce
+Time elapsed: 48.528969 seconds
+
+4 processors without reduce
+Time elapsed: 53.415946 seconds
+
+8 processors with reduce
+Time elapsed: 18.133103 seconds
+
+8 processors without reduce
+Time elapsed: 20.754877 seconds
+
+16 processors with reduce
+Time elapsed: 15.643986 seconds
+
+16 processors without reduce
+Time elapsed: 12.291796 seconds

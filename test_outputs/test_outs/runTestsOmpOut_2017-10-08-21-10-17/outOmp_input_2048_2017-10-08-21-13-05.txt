@@ -1,0 +1,74 @@
+2017-10-08-21-13-05 Size: 2048 Max loops: 500 Reduce rate: 20
+
+
+2 processors 1 threads with reduce
+Time elapsed: 280.694984 seconds
+
+2 processors 1 threads without reduce
+Time elapsed: 256.462453 seconds
+
+2 processors 2 threads with reduce
+Time elapsed: 170.796409 seconds
+
+2 processors 2 threads without reduce
+Time elapsed: 137.800705 seconds
+
+2 processors 4 threads with reduce
+Time elapsed: 176.109375 seconds
+
+2 processors 4 threads without reduce
+Time elapsed: 163.128221 seconds
+
+2 processors 8 threads with reduce
+Time elapsed: 178.353288 seconds
+
+2 processors 8 threads without reduce
+Time elapsed: 256.225831 seconds
+
+4 processors 1 threads with reduce
+Time elapsed: 77.869525 seconds
+
+4 processors 1 threads without reduce
+Time elapsed: 69.054985 seconds
+
+4 processors 2 threads with reduce
+Time elapsed: 68.570618 seconds
+
+4 processors 2 threads without reduce
+Time elapsed: 69.549843 seconds
+
+4 processors 4 threads with reduce
+Time elapsed: 69.335642 seconds
+
+4 processors 4 threads without reduce
+Time elapsed: 75.876063 seconds
+
+4 processors 8 threads with reduce
+Time elapsed: 73.258658 seconds
+
+4 processors 8 threads without reduce
+Time elapsed: 69.573756 seconds
+
+8 processors 1 threads with reduce
+Time elapsed: 34.637301 seconds
+
+8 processors 1 threads without reduce
+Time elapsed: 34.821293 seconds
+
+8 processors 2 threads with reduce
+Time elapsed: 34.478967 seconds
+
+8 processors 2 threads without reduce
+Time elapsed: 34.432549 seconds
+
+8 processors 4 threads with reduce
+Time elapsed: 34.625216 seconds
+
+8 processors 4 threads without reduce
+Time elapsed: 34.395857 seconds
+
+8 processors 8 threads with reduce
+Time elapsed: 34.365944 seconds
+
+8 processors 8 threads without reduce
+Time elapsed: 34.353958 seconds

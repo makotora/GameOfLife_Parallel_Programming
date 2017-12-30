@@ -1,0 +1,15 @@
+\begin{table}[h]
+\centering
+\caption{MPI speedups with reduce}
+\label{my-label}
+\begin{tabular}{|l|l|l|l|l|l|}
+\hline
+\textit{\textbf{size \textbackslash processors}} & \textit{\textbf{1}} & \textit{\textbf{2}} & \textit{\textbf{4}} & \textit{\textbf{8}} & \textit{\textbf{16}} \\ \hline
+\textit{\textbf{128  x 128}}                     & 1            & \pgfmathparse{0.904479/0.477023/2}\pgfmathresult            & \pgfmathparse{0.904479/0.370649/4}\pgfmathresult            & \pgfmathparse{0.904479/0.290453}\pgfmathresult            & \pgfmathparse{0.904479/0.900041}\pgfmathresult             \\ \hline
+\textit{\textbf{256  x 256}}                     & 1            & \pgfmathparse{3.595032/1.842699/2}\pgfmathresult            & \pgfmathparse{3.595032/1.029464/4}\pgfmathresult            & \pgfmathparse{3.595032/0.663919/8}\pgfmathresult            & \pgfmathparse{3.595032/1.113688/16}\pgfmathresult             \\ \hline
+\textit{\textbf{512  x 512}}                     & 1           & \pgfmathparse{14.420917/7.388497/2}\pgfmathresult            & \pgfmathparse{14.420917/3.767523/4}\pgfmathresult            & \pgfmathparse{14.420917/2.002380/8}\pgfmathresult            & \pgfmathparse{14.420917/2.734167/16}\pgfmathresult             \\ \hline
+\textit{\textbf{1024 x 1024}}                    & 1           & \pgfmathparse{57.923903/31.038880/2}\pgfmathresult           & \pgfmathparse{57.923903/17.162390/4}\pgfmathresult           & \pgfmathparse{57.923903/7.550767/8}\pgfmathresult            & \pgfmathparse{57.923903/5.603595/16}\pgfmathresult             \\ \hline
+\textit{\textbf{2048 x 2048}}                    & 1          & \pgfmathparse{57.923903/145.501710/2}\pgfmathresult          & \pgfmathparse{57.923903/68.225202/4}\pgfmathresult           & \pgfmathparse{57.923903/39.291550/8}\pgfmathresult           & \pgfmathparse{57.923903/17.565808/16}\pgfmathresult            \\ \hline
+\textit{\textbf{4096 x 4096}}                    & 1         & \pgfmathparse{1027.920754/597.398473/2}\pgfmathresult          & \pgfmathparse{1027.920754/353.983091/4}\pgfmathresult          & \pgfmathparse{1027.920754/200.131577/8}\pgfmathresult          & \pgfmathparse{1027.920754/68.100946/16}\pgfmathresult            \\ \hline
+\end{tabular}
+\end{table}

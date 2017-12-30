@@ -7,7 +7,7 @@ int main(int argc, char* argv[])
 	if (argc != 5)
 	{
 		printf("Invalid number of arguments!\n");
-		printf("Usage: ./fgen lines columns alive_count file_name\n");
+		printf("Usage: ./fgen lines columns alive_percent file_name\n");
 		return -1;
 	}
 
@@ -15,7 +15,7 @@ int main(int argc, char* argv[])
 	char* file_name;
 	lines = atoi(argv[1]);
 	columns = atoi(argv[2]);
-	alive_count = atoi(argv[3]);
+	alive_count = atoi(argv[3])*lines*columns/100;
 	file_name = argv[4];
 	printf("Lines: %d\nColumns: %d\n", lines, columns);
 	printf("Generating file '%s' for %d alive organisms\n", file_name, alive_count);

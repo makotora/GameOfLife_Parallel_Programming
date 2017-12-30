@@ -1,0 +1,98 @@
+2017-10-08-16-34-45 Size: 1024 Max loops: 500 Reduce rate: 20
+
+
+1 processors 1 threads with reduce
+Time elapsed: 69.003258 seconds
+
+1 processors 1 threads without reduce
+Time elapsed: 75.635061 seconds
+
+1 processors 2 threads with reduce
+Time elapsed: 58.097262 seconds
+
+1 processors 2 threads without reduce
+Time elapsed: 80.154459 seconds
+
+1 processors 4 threads with reduce
+Time elapsed: 68.193377 seconds
+
+1 processors 4 threads without reduce
+Time elapsed: 61.737023 seconds
+
+1 processors 8 threads with reduce
+Time elapsed: 57.863566 seconds
+
+1 processors 8 threads without reduce
+Time elapsed: 58.040129 seconds
+
+2 processors 1 threads with reduce
+Time elapsed: 58.671678 seconds
+
+2 processors 1 threads without reduce
+Time elapsed: 61.248265 seconds
+
+2 processors 2 threads with reduce
+Time elapsed: 60.780002 seconds
+
+2 processors 2 threads without reduce
+Time elapsed: 43.430616 seconds
+
+2 processors 4 threads with reduce
+Time elapsed: 62.447546 seconds
+
+2 processors 4 threads without reduce
+Time elapsed: 71.346417 seconds
+
+2 processors 8 threads with reduce
+Time elapsed: 56.895953 seconds
+
+2 processors 8 threads without reduce
+Time elapsed: 46.106482 seconds
+
+4 processors 1 threads with reduce
+Time elapsed: 63.152333 seconds
+
+4 processors 1 threads without reduce
+Time elapsed: 39.181009 seconds
+
+4 processors 2 threads with reduce
+Time elapsed: 65.197339 seconds
+
+4 processors 2 threads without reduce
+Time elapsed: 100.343958 seconds
+
+4 processors 4 threads with reduce
+Time elapsed: 33.323935 seconds
+
+4 processors 4 threads without reduce
+Time elapsed: 31.032796 seconds
+
+4 processors 8 threads with reduce
+Time elapsed: 35.863364 seconds
+
+4 processors 8 threads without reduce
+Time elapsed: 37.496978 seconds
+
+8 processors 1 threads with reduce
+Time elapsed: 25.216681 seconds
+
+8 processors 1 threads without reduce
+Time elapsed: 15.197785 seconds
+
+8 processors 2 threads with reduce
+Time elapsed: 15.536028 seconds
+
+8 processors 2 threads without reduce
+Time elapsed: 15.884065 seconds
+
+8 processors 4 threads with reduce
+Time elapsed: 15.698366 seconds
+
+8 processors 4 threads without reduce
+Time elapsed: 111.227995 seconds
+
+8 processors 8 threads with reduce
+Time elapsed: 34.152020 seconds
+
+8 processors 8 threads without reduce
+Time elapsed: 40.260046 seconds
