@@ -648,7 +648,7 @@ int main(int argc, char* argv[])
 			MPI_Allreduce(&no_change, &no_change_sum, 1, MPI_SHORT, MPI_SUM, virtual_comm);
 			if (no_change_sum == processors )
 			{
-				if (my_rank && STATUS) 
+				if (my_rank == 0 && STATUS) 
 					printf("Terminating because there was no change at loop number %d\n", count);
 
 				break;
