@@ -10,7 +10,7 @@
 #include "./gol_lib/gol_array.h"
 #include "./gol_lib/functions.h"
 
-#define DEBUG 0
+#define DEBUG 1
 #define INFO 1
 #define STATUS 1
 #define TIME 1
@@ -445,63 +445,64 @@ int main(int argc, char* argv[])
 	send_tags[7] = 8; //send down right
 
 	int receive_tags[8];
-
-	if (line_div == 1) {
-		//no up-down neighbours, its me
-		receive_tags[0] = send_tags[0];//receive up what I sent up
-		receive_tags[1] = send_tags[1];
-	}
-	else {
-		receive_tags[0] = send_tags[1];//receive up what neighbour sent down
-		receive_tags[1] = send_tags[0];	
-	}
-
-	if (col_div == 1) {
-		//no right-left neighbours, its me
-		receive_tags[2] = send_tags[2];//receive left what i sent left
-		receive_tags[3] = send_tags[3];
-	}
-	else {
-		receive_tags[2] = send_tags[3];//receive left what neighbour sent right
-		receive_tags[3] = send_tags[2];	
-	}
-
-	if (processors == 1) {
-		//col div and line div are both 1
-		//corners are me as well (so is everything else)
-		receive_tags[4] = send_tags[4];
-		receive_tags[5] = send_tags[5];
-		receive_tags[6] = send_tags[6];
-		receive_tags[7] = send_tags[7];
-	}
-	else {
-		receive_tags[4] = send_tags[7];//receive up left what neighbour sent down right
-		receive_tags[5] = send_tags[6];
-		receive_tags[6] = send_tags[5];
-		receive_tags[7] = send_tags[4];	
-	}
+	receive_tags[0] = send_tags[1];//receive up what neighbour sent down
+	receive_tags[1] = send_tags[0];
+	receive_tags[2] = send_tags[3];//receive left what neighbour sent right
+	receive_tags[3] = send_tags[2];
+	receive_tags[4] = send_tags[7];//receive up left what neighbour sent down right
+	receive_tags[5] = send_tags[6];
+	receive_tags[6] = send_tags[5];
+	receive_tags[7] = send_tags[4];
 
 	//first the send requests
 	MPI_Request send_request[2][8];
 	//rows
-	MPI_Send_init( &array1[row_start][col_start], cols_per_block, MPI_SHORT, rank_u, send_tags[0], virtual_comm, &send_request[0][0]);
-	MPI_Send_init( &array1[row_end][col_start],   cols_per_block, MPI_SHORT, rank_d, send_tags[1], virtual_comm, &send_request[0][1]);
-	MPI_Send_init( &array2[row_start][col_start], cols_per_block, MPI_SHORT, rank_u, send_tags[0], virtual_comm, &send_request[1][0]);
-	MPI_Send_init( &array2[row_end][col_start],   cols_per_block, MPI_SHORT, rank_d, send_tags[1], virtual_comm, &send_request[1][1]);
+	if (line_div != 1) {
+		MPI_Send_init( &array1[row_start][col_start], cols_per_block, MPI_SHORT, rank_u, send_tags[0], virtual_comm, &send_request[0][0]);
+		MPI_Send_init( &array1[row_end][col_start],   cols_per_block, MPI_SHORT, rank_d, send_tags[1], virtual_comm, &send_request[0][1]);
+		MPI_Send_init( &array2[row_start][col_start], cols_per_block, MPI_SHORT, rank_u, send_tags[0], virtual_comm, &send_request[1][0]);
+		MPI_Send_init( &array2[row_end][col_start],   cols_per_block, MPI_SHORT, rank_d, send_tags[1], virtual_comm, &send_request[1][1]);
+	}
+	else { //process has all the rows it needs
+		MPI_Send_init( &array1[row_start][col_start], cols_per_block, MPI_SHORT, MPI_PROC_NULL, send_tags[0], virtual_comm, &send_request[0][0]);
+		MPI_Send_init( &array1[row_end][col_start],   cols_per_block, MPI_SHORT, MPI_PROC_NULL, send_tags[1], virtual_comm, &send_request[0][1]);
+		MPI_Send_init( &array2[row_start][col_start], cols_per_block, MPI_SHORT, MPI_PROC_NULL, send_tags[0], virtual_comm, &send_request[1][0]);
+		MPI_Send_init( &array2[row_end][col_start],   cols_per_block, MPI_SHORT, MPI_PROC_NULL, send_tags[1], virtual_comm, &send_request[1][1]);
+	}
 	//cols
-	MPI_Send_init( &array1[row_start][col_start], 1, derived_type_block_col, rank_l, send_tags[2], virtual_comm, &send_request[0][2]);
-	MPI_Send_init( &array1[row_start][col_end],   1, derived_type_block_col, rank_r, send_tags[3], virtual_comm, &send_request[0][3]);
-	MPI_Send_init( &array2[row_start][col_start], 1, derived_type_block_col, rank_l, send_tags[2], virtual_comm, &send_request[1][2]);
-	MPI_Send_init( &array2[row_start][col_end],   1, derived_type_block_col, rank_r, send_tags[3], virtual_comm, &send_request[1][3]);
+	if (col_div != 1) {
+		MPI_Send_init( &array1[row_start][col_start], 1, derived_type_block_col, rank_l, send_tags[2], virtual_comm, &send_request[0][2]);
+		MPI_Send_init( &array1[row_start][col_end],   1, derived_type_block_col, rank_r, send_tags[3], virtual_comm, &send_request[0][3]);
+		MPI_Send_init( &array2[row_start][col_start], 1, derived_type_block_col, rank_l, send_tags[2], virtual_comm, &send_request[1][2]);
+		MPI_Send_init( &array2[row_start][col_end],   1, derived_type_block_col, rank_r, send_tags[3], virtual_comm, &send_request[1][3]);
+	}
+	else { // process has all the col it needs
+		MPI_Send_init( &array1[row_start][col_start], 1, derived_type_block_col, MPI_PROC_NULL, send_tags[2], virtual_comm, &send_request[0][2]);
+		MPI_Send_init( &array1[row_start][col_end],   1, derived_type_block_col, MPI_PROC_NULL, send_tags[3], virtual_comm, &send_request[0][3]);
+		MPI_Send_init( &array2[row_start][col_start], 1, derived_type_block_col, MPI_PROC_NULL, send_tags[2], virtual_comm, &send_request[1][2]);
+		MPI_Send_init( &array2[row_start][col_end],   1, derived_type_block_col, MPI_PROC_NULL, send_tags[3], virtual_comm, &send_request[1][3]);
+	}
 	//corners
-	MPI_Send_init( &array1[row_start][col_start], 1, MPI_SHORT, rank_ul, send_tags[4], virtual_comm, &send_request[0][4]);
-	MPI_Send_init( &array1[row_start][col_end],   1, MPI_SHORT, rank_ur, send_tags[5], virtual_comm, &send_request[0][5]);
-	MPI_Send_init( &array1[row_end][col_start],   1, MPI_SHORT, rank_dl, send_tags[6], virtual_comm, &send_request[0][6]);
-	MPI_Send_init( &array1[row_end][col_end],     1, MPI_SHORT, rank_dr, send_tags[7], virtual_comm, &send_request[0][7]);
-	MPI_Send_init( &array2[row_start][col_start], 1, MPI_SHORT, rank_ul, send_tags[4], virtual_comm, &send_request[1][4]);
-	MPI_Send_init( &array2[row_start][col_end],   1, MPI_SHORT, rank_ur, send_tags[5], virtual_comm, &send_request[1][5]);
-	MPI_Send_init( &array2[row_end][col_start],   1, MPI_SHORT, rank_dl, send_tags[6], virtual_comm, &send_request[1][6]);
-	MPI_Send_init( &array2[row_end][col_end],     1, MPI_SHORT, rank_dr, send_tags[7], virtual_comm, &send_request[1][7]);
+	if (line_div != 1 || col_div != 1) {
+		MPI_Send_init( &array1[row_start][col_start], 1, MPI_SHORT, rank_ul, send_tags[4], virtual_comm, &send_request[0][4]);
+		MPI_Send_init( &array1[row_start][col_end],   1, MPI_SHORT, rank_ur, send_tags[5], virtual_comm, &send_request[0][5]);
+		MPI_Send_init( &array1[row_end][col_start],   1, MPI_SHORT, rank_dl, send_tags[6], virtual_comm, &send_request[0][6]);
+		MPI_Send_init( &array1[row_end][col_end],     1, MPI_SHORT, rank_dr, send_tags[7], virtual_comm, &send_request[0][7]);
+		MPI_Send_init( &array2[row_start][col_start], 1, MPI_SHORT, rank_ul, send_tags[4], virtual_comm, &send_request[1][4]);
+		MPI_Send_init( &array2[row_start][col_end],   1, MPI_SHORT, rank_ur, send_tags[5], virtual_comm, &send_request[1][5]);
+		MPI_Send_init( &array2[row_end][col_start],   1, MPI_SHORT, rank_dl, send_tags[6], virtual_comm, &send_request[1][6]);
+		MPI_Send_init( &array2[row_end][col_end],     1, MPI_SHORT, rank_dr, send_tags[7], virtual_comm, &send_request[1][7]);
+	}
+	else {
+		MPI_Send_init( &array1[row_start][col_start], 1, MPI_SHORT, MPI_PROC_NULL, send_tags[4], virtual_comm, &send_request[0][4]);
+		MPI_Send_init( &array1[row_start][col_end],   1, MPI_SHORT, MPI_PROC_NULL, send_tags[5], virtual_comm, &send_request[0][5]);
+		MPI_Send_init( &array1[row_end][col_start],   1, MPI_SHORT, MPI_PROC_NULL, send_tags[6], virtual_comm, &send_request[0][6]);
+		MPI_Send_init( &array1[row_end][col_end],     1, MPI_SHORT, MPI_PROC_NULL, send_tags[7], virtual_comm, &send_request[0][7]);
+		MPI_Send_init( &array2[row_start][col_start], 1, MPI_SHORT, MPI_PROC_NULL, send_tags[4], virtual_comm, &send_request[1][4]);
+		MPI_Send_init( &array2[row_start][col_end],   1, MPI_SHORT, MPI_PROC_NULL, send_tags[5], virtual_comm, &send_request[1][5]);
+		MPI_Send_init( &array2[row_end][col_start],   1, MPI_SHORT, MPI_PROC_NULL, send_tags[6], virtual_comm, &send_request[1][6]);
+		MPI_Send_init( &array2[row_end][col_end],     1, MPI_SHORT, MPI_PROC_NULL, send_tags[7], virtual_comm, &send_request[1][7]);
+	}
 
 	//then the receive requests
 	MPI_Request recv_request[2][8];
@@ -511,24 +512,52 @@ int main(int argc, char* argv[])
 	int right_col = (col_end+1) % M;
 
 	//rows
-	MPI_Recv_init( &array1[up_row][col_start],   cols_per_block, MPI_SHORT, rank_u, receive_tags[0], virtual_comm, &recv_request[0][0]);
-	MPI_Recv_init( &array1[down_row][col_start], cols_per_block, MPI_SHORT, rank_d, receive_tags[1], virtual_comm, &recv_request[0][1]);
-	MPI_Recv_init( &array2[up_row][col_start],   cols_per_block, MPI_SHORT, rank_u, receive_tags[0], virtual_comm, &recv_request[1][0]);
-	MPI_Recv_init( &array2[down_row][col_start], cols_per_block, MPI_SHORT, rank_d, receive_tags[1], virtual_comm, &recv_request[1][1]);
+	if (line_div != 1) {
+		MPI_Recv_init( &array1[up_row][col_start],   cols_per_block, MPI_SHORT, rank_u, receive_tags[0], virtual_comm, &recv_request[0][0]);
+		MPI_Recv_init( &array1[down_row][col_start], cols_per_block, MPI_SHORT, rank_d, receive_tags[1], virtual_comm, &recv_request[0][1]);
+		MPI_Recv_init( &array2[up_row][col_start],   cols_per_block, MPI_SHORT, rank_u, receive_tags[0], virtual_comm, &recv_request[1][0]);
+		MPI_Recv_init( &array2[down_row][col_start], cols_per_block, MPI_SHORT, rank_d, receive_tags[1], virtual_comm, &recv_request[1][1]);
+	}
+	else {
+		MPI_Recv_init( &array1[up_row][col_start],   cols_per_block, MPI_SHORT, MPI_PROC_NULL, receive_tags[0], virtual_comm, &recv_request[0][0]);
+		MPI_Recv_init( &array1[down_row][col_start], cols_per_block, MPI_SHORT, MPI_PROC_NULL, receive_tags[1], virtual_comm, &recv_request[0][1]);
+		MPI_Recv_init( &array2[up_row][col_start],   cols_per_block, MPI_SHORT, MPI_PROC_NULL, receive_tags[0], virtual_comm, &recv_request[1][0]);
+		MPI_Recv_init( &array2[down_row][col_start], cols_per_block, MPI_SHORT, MPI_PROC_NULL, receive_tags[1], virtual_comm, &recv_request[1][1]);
+	}
 	//cols
-	MPI_Recv_init( &array1[row_start][left_col],  1, derived_type_block_col, rank_l, receive_tags[2], virtual_comm, &recv_request[0][2]);
-	MPI_Recv_init( &array1[row_start][right_col], 1, derived_type_block_col, rank_r, receive_tags[3], virtual_comm, &recv_request[0][3]);
-	MPI_Recv_init( &array2[row_start][left_col],  1, derived_type_block_col, rank_l, receive_tags[2], virtual_comm, &recv_request[1][2]);
-	MPI_Recv_init( &array2[row_start][right_col], 1, derived_type_block_col, rank_r, receive_tags[3], virtual_comm, &recv_request[1][3]);
+	if (col_div != 1) {
+		MPI_Recv_init( &array1[row_start][left_col],  1, derived_type_block_col, rank_l, receive_tags[2], virtual_comm, &recv_request[0][2]);
+		MPI_Recv_init( &array1[row_start][right_col], 1, derived_type_block_col, rank_r, receive_tags[3], virtual_comm, &recv_request[0][3]);
+		MPI_Recv_init( &array2[row_start][left_col],  1, derived_type_block_col, rank_l, receive_tags[2], virtual_comm, &recv_request[1][2]);
+		MPI_Recv_init( &array2[row_start][right_col], 1, derived_type_block_col, rank_r, receive_tags[3], virtual_comm, &recv_request[1][3]);
+	}
+	else {
+		MPI_Recv_init( &array1[row_start][left_col],  1, derived_type_block_col, MPI_PROC_NULL, receive_tags[2], virtual_comm, &recv_request[0][2]);
+		MPI_Recv_init( &array1[row_start][right_col], 1, derived_type_block_col, MPI_PROC_NULL, receive_tags[3], virtual_comm, &recv_request[0][3]);
+		MPI_Recv_init( &array2[row_start][left_col],  1, derived_type_block_col, MPI_PROC_NULL, receive_tags[2], virtual_comm, &recv_request[1][2]);
+		MPI_Recv_init( &array2[row_start][right_col], 1, derived_type_block_col, MPI_PROC_NULL, receive_tags[3], virtual_comm, &recv_request[1][3]);		
+	}
 	//corners
-	MPI_Recv_init( &array1[up_row][left_col],  1, MPI_SHORT, rank_ul, receive_tags[4], virtual_comm, &recv_request[0][4]);
-	MPI_Recv_init( &array1[up_row][right_col], 1, MPI_SHORT, rank_ur, receive_tags[5], virtual_comm, &recv_request[0][5]);
-	MPI_Recv_init( &array1[down_row][left_col],  1, MPI_SHORT, rank_dl, receive_tags[6], virtual_comm, &recv_request[0][6]);
-	MPI_Recv_init( &array1[down_row][right_col], 1, MPI_SHORT, rank_dr, receive_tags[7], virtual_comm, &recv_request[0][7]);
-	MPI_Recv_init( &array2[up_row][left_col],  1, MPI_SHORT, rank_ul, receive_tags[4], virtual_comm, &recv_request[1][4]);
-	MPI_Recv_init( &array2[up_row][right_col], 1, MPI_SHORT, rank_ur, receive_tags[5], virtual_comm, &recv_request[1][5]);
-	MPI_Recv_init( &array2[down_row][left_col],  1, MPI_SHORT, rank_dl, receive_tags[6], virtual_comm, &recv_request[1][6]);
-	MPI_Recv_init( &array2[down_row][right_col], 1, MPI_SHORT, rank_dr, receive_tags[7], virtual_comm, &recv_request[1][7]);
+	if (line_div != 1 || col_div != 1) {
+		MPI_Recv_init( &array1[up_row][left_col],  1, MPI_SHORT, rank_ul, receive_tags[4], virtual_comm, &recv_request[0][4]);
+		MPI_Recv_init( &array1[up_row][right_col], 1, MPI_SHORT, rank_ur, receive_tags[5], virtual_comm, &recv_request[0][5]);
+		MPI_Recv_init( &array1[down_row][left_col],  1, MPI_SHORT, rank_dl, receive_tags[6], virtual_comm, &recv_request[0][6]);
+		MPI_Recv_init( &array1[down_row][right_col], 1, MPI_SHORT, rank_dr, receive_tags[7], virtual_comm, &recv_request[0][7]);
+		MPI_Recv_init( &array2[up_row][left_col],  1, MPI_SHORT, rank_ul, receive_tags[4], virtual_comm, &recv_request[1][4]);
+		MPI_Recv_init( &array2[up_row][right_col], 1, MPI_SHORT, rank_ur, receive_tags[5], virtual_comm, &recv_request[1][5]);
+		MPI_Recv_init( &array2[down_row][left_col],  1, MPI_SHORT, rank_dl, receive_tags[6], virtual_comm, &recv_request[1][6]);
+		MPI_Recv_init( &array2[down_row][right_col], 1, MPI_SHORT, rank_dr, receive_tags[7], virtual_comm, &recv_request[1][7]);
+	}
+	else {
+		MPI_Recv_init( &array1[up_row][left_col],  1, MPI_SHORT, MPI_PROC_NULL, receive_tags[4], virtual_comm, &recv_request[0][4]);
+		MPI_Recv_init( &array1[up_row][right_col], 1, MPI_SHORT, MPI_PROC_NULL, receive_tags[5], virtual_comm, &recv_request[0][5]);
+		MPI_Recv_init( &array1[down_row][left_col],  1, MPI_SHORT, MPI_PROC_NULL, receive_tags[6], virtual_comm, &recv_request[0][6]);
+		MPI_Recv_init( &array1[down_row][right_col], 1, MPI_SHORT, MPI_PROC_NULL, receive_tags[7], virtual_comm, &recv_request[0][7]);
+		MPI_Recv_init( &array2[up_row][left_col],  1, MPI_SHORT, MPI_PROC_NULL, receive_tags[4], virtual_comm, &recv_request[1][4]);
+		MPI_Recv_init( &array2[up_row][right_col], 1, MPI_SHORT, MPI_PROC_NULL, receive_tags[5], virtual_comm, &recv_request[1][5]);
+		MPI_Recv_init( &array2[down_row][left_col],  1, MPI_SHORT, MPI_PROC_NULL, receive_tags[6], virtual_comm, &recv_request[1][6]);
+		MPI_Recv_init( &array2[down_row][right_col], 1, MPI_SHORT, MPI_PROC_NULL, receive_tags[7], virtual_comm, &recv_request[1][7]);
+	}
 
 	int count;
 	int no_change;
