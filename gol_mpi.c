@@ -63,34 +63,35 @@ int main(int argc, char* argv[])
   	//Read matrix size and game of life grid
   	//Or use default values and randomly generate a game if no arguments are given
 	i = 0;
-  	while (++i < argc)
-  	{
-  		if ( !strcmp(argv[i], "-f") )
-  		{
-  			filename = argv[i+1];
-  			i++;
-  		}
-  		else if ( !strcmp(argv[i], "-l") )
-  		{
-  			N = atoi(argv[i+1]);
-  			i++;
-  		}
-  		else if ( !strcmp(argv[i], "-c") )
-  		{
-  			M = atoi(argv[i+1]);
-  			i++;
-  		}
-  		else if ( !strcmp(argv[i], "-m") )
-  		{
-  			max_loops = atoi(argv[i+1]);
-  			i++;
-  		}
-  		else if ( !strcmp(argv[i], "-r") )
-  		{
-  			reduce_rate = atoi(argv[i+1]);
-  			i++;
-  		}
-  	}
+	while (++i < argc)
+	{
+		if ( !strcmp(argv[i], "-f") )
+		{
+			filename = argv[i+1];
+			i++;
+		}
+		else if ( !strcmp(argv[i], "-l") )
+		{
+			N = atoi(argv[i+1]);
+			i++;
+		}
+		else if ( !strcmp(argv[i], "-c") )
+		{
+			M = atoi(argv[i+1]);
+			i++;
+		}
+		else if ( !strcmp(argv[i], "-m") )
+		{
+			max_loops = atoi(argv[i+1]);
+			i++;
+		}
+		else if ( !strcmp(argv[i], "-r") )
+		{
+			reduce_rate = atoi(argv[i+1]);
+			i++;
+		}
+	}
+
 	if (N == -1 || M == -1)
 	{
 		N = DEFAULT_N;
@@ -297,10 +298,10 @@ int main(int argc, char* argv[])
   	
   	//we use the process's coordinates instead of its rank
   	//because mpi might have reordered the processes for better performance (virtual topology)
-  	row_start = my_coords[0] * rows_per_block;
-  	row_end = row_start + rows_per_block - 1;
-  	col_start = my_coords[1] * cols_per_block;
-  	col_end = col_start + cols_per_block - 1;
+	row_start = my_coords[0] * rows_per_block;
+	row_end = row_start + rows_per_block - 1;
+	col_start = my_coords[1] * cols_per_block;
+	col_end = col_start + cols_per_block - 1;
 
 	//DEBUG PRINT FOR BOUNDARIES (only master prints it)
 	if (DEBUG)
@@ -339,19 +340,19 @@ int main(int argc, char* argv[])
   	if (my_rank == 0) 
   	{
 
-		if (filename != NULL) 
-		{
-			gol_array_read_file_and_scatter(filename, ga1, processors, rows_per_block, cols_per_block, blocks_per_row, virtual_comm);
-		}
-		else 
-		{//no input file given, generate a random game array
-			if (INFO)
-			{
-				printf("No input file given as argument\n");
-				printf("Generating a random game of life array to play\n");
-			}
-			gol_array_generate_and_scatter(ga1, processors, rows_per_block, cols_per_block, blocks_per_row, virtual_comm);
-		}
+  		if (filename != NULL) 
+  		{
+  			gol_array_read_file_and_scatter(filename, ga1, processors, rows_per_block, cols_per_block, blocks_per_row, virtual_comm);
+  		}
+  		else 
+  		{//no input file given, generate a random game array
+  			if (INFO)
+  			{
+  				printf("No input file given as argument\n");
+  				printf("Generating a random game of life array to play\n");
+  			}
+  			gol_array_generate_and_scatter(ga1, processors, rows_per_block, cols_per_block, blocks_per_row, virtual_comm);
+  		}
   	}
   	else //for other processes besides master
   	{

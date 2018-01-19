@@ -2,23 +2,22 @@
 #include <assert.h>
 #include <string.h>
 #include <stdlib.h>
-#include <sys/stat.h>
 #include <math.h>
-
-#include <omp.h>
+#include <sys/stat.h>
 
 #include <mpi.h>
+#include <omp.h>
 
 #include "./gol_lib/gol_array.h"
 #include "./gol_lib/functions.h"
 
-#define DEBUG 0
+#define DEBUG 1
 #define INFO 1
 #define STATUS 1
 #define TIME 1
-#define PRINT_INITIAL 0
-#define PRINT_STEPS 0
-#define PRINT_FINAL 0
+#define PRINT_INITIAL 1
+#define PRINT_STEPS 1
+#define PRINT_FINAL 1
 #define DEFAULT_N 420
 #define DEFAULT_M 420
 #define MAX_LOOPS 200
@@ -26,11 +25,11 @@
 #define NUM_THREADS 2
 
 void gol_array_read_file_and_scatter(char* filename, gol_array* gol_ar, int processors,
-										int rows_per_block, int cols_per_block, int blocks_per_row);
+										int rows_per_block, int cols_per_block, int blocks_per_row, MPI_Comm virtual_comm);
 void gol_array_generate_and_scatter(gol_array* gol_ar, int processors,
-										int rows_per_block, int cols_per_block, int blocks_per_row);
-void gol_array_gather(short int** array, int my_rank, int processors,
-										 int row_start, int row_end, int col_start, int col_end);
+										int rows_per_block, int cols_per_block, int blocks_per_row, MPI_Comm virtual_comm);
+void gol_array_gather(short int** array, int my_rank, int processes, int row_start, int col_start, 
+	int blocks_per_row, int blocks_per_col, int rows_per_block, int cols_per_block, MPI_Datatype block_array, MPI_Comm virtual_comm);
 
 int main(int argc, char* argv[])
 {
@@ -46,13 +45,12 @@ int main(int argc, char* argv[])
 	/* SECTION A
 		MPI Initialize
 		Blocks computation
-		Matrix allocation, initialization and 'scatter' to processes
 		Column derived data type
 	*/
 
 	//MPI init
 	int my_rank, processors;
-	int openmp_threads = NUM_THREADS;
+  int openmp_threads = NUM_THREADS;
 	int tag = 201049;
 	MPI_Status status;
 	int coordinates[2];
@@ -68,42 +66,41 @@ int main(int argc, char* argv[])
   	//Read matrix size and game of life grid
   	//Or use default values and randomly generate a game if no arguments are given
 	i = 0;
-  	while (++i < argc)
-  	{
-  		if ( !strcmp(argv[i], "-f") )
-  		{
-  			filename = argv[i+1];
-  			i++;
-  		}
-  		else if ( !strcmp(argv[i], "-l") )
-  		{
-  			N = atoi(argv[i+1]);
-  			i++;
-  		}
-  		else if ( !strcmp(argv[i], "-c") )
-  		{
-  			M = atoi(argv[i+1]);
-  			i++;
-  		}
-  		else if ( !strcmp(argv[i], "-m") )
-  		{
-  			max_loops = atoi(argv[i+1]);
-  			i++;
-  		}
-  		else if ( !strcmp(argv[i], "-r") )
-  		{
-  			reduce_rate = atoi(argv[i+1]);
-  			i++;
-  		}
-  		else if ( !strcmp(argv[i], "-t") )
-  		{
-  			openmp_threads = atoi(argv[i+1]);
-  			i++;
-  		}
+	while (++i < argc)
+	{
+		if ( !strcmp(argv[i], "-f") )
+		{
+			filename = argv[i+1];
+			i++;
+		}
+		else if ( !strcmp(argv[i], "-l") )
+		{
+			N = atoi(argv[i+1]);
+			i++;
+		}
+		else if ( !strcmp(argv[i], "-c") )
+		{
+			M = atoi(argv[i+1]);
+			i++;
+		}
+		else if ( !strcmp(argv[i], "-m") )
+		{
+			max_loops = atoi(argv[i+1]);
+			i++;
+		}
+		else if ( !strcmp(argv[i], "-r") )
+		{
+			reduce_rate = atoi(argv[i+1]);
+			i++;
+		}
+    else if ( !strcmp(argv[i], "-t") )
+    {
+      openmp_threads = atoi(argv[i+1]);
+      i++;
+    }
+	}
 
-  	}
-
-	omp_set_num_threads(openmp_threads);
+  omp_set_num_threads(openmp_threads);
 
 	if (N == -1 || M == -1)
 	{
@@ -113,7 +110,7 @@ int main(int argc, char* argv[])
 		if (INFO && my_rank == 0)
 		{
 			printf("Running with default matrix size %dx%d\n", N, M);
-			printf("Usage : 'mpiexec -n <process_num> ./gol_mpi_openmp -f <filename> -l <N> -c <M> -n <max_loops> -r <reduce_rate> -t <threads>\n");
+			printf("Usage : 'mpiexec -n <process_num> ./gol_mpi -f <filename> -l <N> -c <M> -m <max_loops> -r <reduce_rate>\n");
 		}
 	}
 	else
@@ -123,7 +120,7 @@ int main(int argc, char* argv[])
 			if (N == 0 || M == 0)
 			{
 				printf("Invalid arguments given!");	
-				printf("Usage : 'mpiexec -n <process_num> ./gol_mpi_openmp -f <filename> -l <N> -c <M> -n <max_loops> -r <reduce_rate> -t <threads>\n");
+				printf("Usage : 'mpiexec -n <process_num> ./gol_mpi -f <filename> -l <N> -c <M> -m <max_loops> -r <reduce_rate>\n");
 				printf("Aborting...\n");
 				MPI_Abort(MPI_COMM_WORLD, -1);
 			}
@@ -204,58 +201,6 @@ int main(int argc, char* argv[])
 		printf("cols_per_block: %d\n", cols_per_block);
 	}
 
-	//allocate and init two NxM gol_arrays
-	ga1 = gol_array_init(N, M);
-	ga2 = gol_array_init(N, M);
-
-	//read/generate game of life array
-	//'scatter' game matrix (send the coordinates to the correct process)
-  	if (my_rank == 0) 
-  	{
-
-		if (filename != NULL) 
-		{
-			gol_array_read_file_and_scatter(filename, ga1, processors, rows_per_block, cols_per_block, blocks_per_row);
-		}
-		else 
-		{//no input file given, generate a random game array
-			if (INFO)
-			{
-				printf("No input file given as argument\n");
-				printf("Generating a random game of life array to play\n");
-			}
-			gol_array_generate_and_scatter(ga1, processors, rows_per_block, cols_per_block, blocks_per_row);
-		}
-		
-		if (PRINT_INITIAL)
-		{
-			printf("Printing initial array:\n\n");
-			print_array(ga1->array, N, M);
-			putchar('\n');	
-		}
-
-  	}
-  	else //for other processes besides master
-  	{
-  		//receive coordinates of alive cells, until we receive (-1,-1)
-  		short int** array = ga1->array;
-  		int finished = 0;
-
-  		while (!finished)
-  		{
-  			MPI_Recv(coordinates, 2, MPI_INT, 0, tag, MPI_COMM_WORLD, &status);
-
-  			if (coordinates[0] == -1 && coordinates[1] == -1)
-  			{
-  				finished = 1;
-  			}
-  			else
-  			{
-  				array[ coordinates[0] ][ coordinates[1] ] = 1;
-  			}
-  		}
-  	}
-
 	//Define our column derived data type
 	MPI_Datatype derived_type_block_col;
 
@@ -267,12 +212,24 @@ int main(int argc, char* argv[])
 
 	MPI_Type_commit(&derived_type_block_col);
 
+	//Define block_array data type
+	//In case we want to gather all arrays to master
+	MPI_Datatype derived_type_block_array;
+
+	MPI_Type_vector(rows_per_block,    
+	   cols_per_block,                  
+	   M,         
+	   MPI_SHORT,       
+	   &derived_type_block_array);       
+
+	MPI_Type_commit(&derived_type_block_array);
 
 	/* SECTION B
 		Create our virtual topology
 		For the current proccess in the new topology
 			Find the ranks of its 8 neighbours
 			Calculate its piece/boundaries of the game matrix 
+		Matrix allocation, initialization and 'scatter' to processes
 	*/
 
   	//Create our virtual topology
@@ -287,6 +244,7 @@ int main(int argc, char* argv[])
   	reorder = 1;
 
   	int ret = MPI_Cart_create(MPI_COMM_WORLD, ndimansions, dimansion_size, periods, reorder, &virtual_comm);
+  	MPI_Comm_rank(virtual_comm, &my_rank); //rank might have changed due to reorder
 
   	//find neighbour processes ranks
   	int rank_u, rank_d, rank_r, rank_l;
@@ -381,12 +339,59 @@ int main(int argc, char* argv[])
 	  			}
 	  		}
 		}
-	}
+	} 	
+
+	//allocate and init two NxM gol_arrays
+	ga1 = gol_array_init(N, M);
+	ga2 = gol_array_init(N, M);
+
+	//read/generate game of life array
+	//'scatter' game matrix (send the coordinates to the correct process)
+  	if (my_rank == 0) 
+  	{
+
+  		if (filename != NULL) 
+  		{
+  			gol_array_read_file_and_scatter(filename, ga1, processors, rows_per_block, cols_per_block, blocks_per_row, virtual_comm);
+  		}
+  		else 
+  		{//no input file given, generate a random game array
+  			if (INFO)
+  			{
+  				printf("No input file given as argument\n");
+  				printf("Generating a random game of life array to play\n");
+  			}
+  			gol_array_generate_and_scatter(ga1, processors, rows_per_block, cols_per_block, blocks_per_row, virtual_comm);
+  		}
+  	}
+  	else //for other processes besides master
+  	{
+  		//receive coordinates of alive cells, until we receive (-1,-1)
+  		short int** array = ga1->array;
+  		int finished = 0;
+
+  		while (!finished)
+  		{
+  			MPI_Recv(coordinates, 2, MPI_INT, 0, tag, MPI_COMM_WORLD, &status);
+  			if (DEBUG) {
+  				fprintf(stderr, "%d: I received (%d,%d)\n", my_rank, coordinates[0], coordinates[1]);
+  			}
+  			if (coordinates[0] == -1 && coordinates[1] == -1)
+  			{
+  				finished = 1;
+  			}
+  			else
+  			{
+  				array[ coordinates[0] ][ coordinates[1] ] = 1;
+  			}
+  		}
+  	}
 
   	//DEBUG PRINT FOR ARRAY SCATTER
   	if (DEBUG)
   	{
   		char outname[20];
+  		mkdir("test_outs", 0777);
   		sprintf(outname, "test_outs/out_%d", my_rank);
 
   		FILE* out = fopen(outname, "w");
@@ -422,7 +427,7 @@ int main(int argc, char* argv[])
 			Calculate 'inner' cells
 			Wait for IRecvs to complete
 			Calculate 'outer' cells
-			MPI_Alleduce for master to see if there was a change or not
+			MPI_Allreduce for master to see if there was a change or not
 			If (change && repeats < max_repeats)
 				repeat
 			else
@@ -437,27 +442,78 @@ int main(int argc, char* argv[])
 	//We need to define two types of requests
 	//Because the send/receive buffer is changed due to swapping after each loop/generation
 	
+	//Define tags to seperate messages
+	//Maybe up neighbour and down neighbour is the same process, or even it is ourselves..
+	//So we need to know which receive goes to which array position
+	int send_tags[8];
+	send_tags[0] = 1; //send up
+	send_tags[1] = 2; //send down
+	send_tags[2] = 3; //send left
+	send_tags[3] = 4; //send right
+	send_tags[4] = 5; //send up left
+	send_tags[5] = 6; //send up right
+	send_tags[6] = 7; //send down left
+	send_tags[7] = 8; //send down right
+
+	int receive_tags[8];
+	receive_tags[0] = send_tags[1];//receive up what neighbour sent down
+	receive_tags[1] = send_tags[0];
+	receive_tags[2] = send_tags[3];//receive left what neighbour sent right
+	receive_tags[3] = send_tags[2];
+	receive_tags[4] = send_tags[7];//receive up left what neighbour sent down right
+	receive_tags[5] = send_tags[6];
+	receive_tags[6] = send_tags[5];
+	receive_tags[7] = send_tags[4];
+
 	//first the send requests
 	MPI_Request send_request[2][8];
 	//rows
-	MPI_Send_init( &array1[row_start][col_start], cols_per_block, MPI_SHORT, rank_u, tag, virtual_comm, &send_request[0][0]);
-	MPI_Send_init( &array1[row_end][col_start],   cols_per_block, MPI_SHORT, rank_d, tag, virtual_comm, &send_request[0][1]);
-	MPI_Send_init( &array2[row_start][col_start], cols_per_block, MPI_SHORT, rank_u, tag, virtual_comm, &send_request[1][0]);
-	MPI_Send_init( &array2[row_end][col_start],   cols_per_block, MPI_SHORT, rank_d, tag, virtual_comm, &send_request[1][1]);
+	if (line_div != 1) {
+		MPI_Send_init( &array1[row_start][col_start], cols_per_block, MPI_SHORT, rank_u, send_tags[0], virtual_comm, &send_request[0][0]);
+		MPI_Send_init( &array1[row_end][col_start],   cols_per_block, MPI_SHORT, rank_d, send_tags[1], virtual_comm, &send_request[0][1]);
+		MPI_Send_init( &array2[row_start][col_start], cols_per_block, MPI_SHORT, rank_u, send_tags[0], virtual_comm, &send_request[1][0]);
+		MPI_Send_init( &array2[row_end][col_start],   cols_per_block, MPI_SHORT, rank_d, send_tags[1], virtual_comm, &send_request[1][1]);
+	}
+	else { //process has all the rows it needs
+		MPI_Send_init( &array1[row_start][col_start], cols_per_block, MPI_SHORT, MPI_PROC_NULL, send_tags[0], virtual_comm, &send_request[0][0]);
+		MPI_Send_init( &array1[row_end][col_start],   cols_per_block, MPI_SHORT, MPI_PROC_NULL, send_tags[1], virtual_comm, &send_request[0][1]);
+		MPI_Send_init( &array2[row_start][col_start], cols_per_block, MPI_SHORT, MPI_PROC_NULL, send_tags[0], virtual_comm, &send_request[1][0]);
+		MPI_Send_init( &array2[row_end][col_start],   cols_per_block, MPI_SHORT, MPI_PROC_NULL, send_tags[1], virtual_comm, &send_request[1][1]);
+	}
 	//cols
-	MPI_Send_init( &array1[row_start][col_start], 1, derived_type_block_col, rank_l, tag, virtual_comm, &send_request[0][2]);
-	MPI_Send_init( &array1[row_start][col_end],   1, derived_type_block_col, rank_r, tag, virtual_comm, &send_request[0][3]);
-	MPI_Send_init( &array2[row_start][col_start], 1, derived_type_block_col, rank_l, tag, virtual_comm, &send_request[1][2]);
-	MPI_Send_init( &array2[row_start][col_end],   1, derived_type_block_col, rank_r, tag, virtual_comm, &send_request[1][3]);
+	if (col_div != 1) {
+		MPI_Send_init( &array1[row_start][col_start], 1, derived_type_block_col, rank_l, send_tags[2], virtual_comm, &send_request[0][2]);
+		MPI_Send_init( &array1[row_start][col_end],   1, derived_type_block_col, rank_r, send_tags[3], virtual_comm, &send_request[0][3]);
+		MPI_Send_init( &array2[row_start][col_start], 1, derived_type_block_col, rank_l, send_tags[2], virtual_comm, &send_request[1][2]);
+		MPI_Send_init( &array2[row_start][col_end],   1, derived_type_block_col, rank_r, send_tags[3], virtual_comm, &send_request[1][3]);
+	}
+	else { // process has all the col it needs
+		MPI_Send_init( &array1[row_start][col_start], 1, derived_type_block_col, MPI_PROC_NULL, send_tags[2], virtual_comm, &send_request[0][2]);
+		MPI_Send_init( &array1[row_start][col_end],   1, derived_type_block_col, MPI_PROC_NULL, send_tags[3], virtual_comm, &send_request[0][3]);
+		MPI_Send_init( &array2[row_start][col_start], 1, derived_type_block_col, MPI_PROC_NULL, send_tags[2], virtual_comm, &send_request[1][2]);
+		MPI_Send_init( &array2[row_start][col_end],   1, derived_type_block_col, MPI_PROC_NULL, send_tags[3], virtual_comm, &send_request[1][3]);
+	}
 	//corners
-	MPI_Send_init( &array1[row_start][col_start], 1, MPI_SHORT, rank_ul, tag, virtual_comm, &send_request[0][4]);
-	MPI_Send_init( &array1[row_start][col_end],   1, MPI_SHORT, rank_ur, tag, virtual_comm, &send_request[0][5]);
-	MPI_Send_init( &array1[row_end][col_start],   1, MPI_SHORT, rank_dl, tag, virtual_comm, &send_request[0][6]);
-	MPI_Send_init( &array1[row_end][col_end],     1, MPI_SHORT, rank_dr, tag, virtual_comm, &send_request[0][7]);
-	MPI_Send_init( &array2[row_start][col_start], 1, MPI_SHORT, rank_ul, tag, virtual_comm, &send_request[1][4]);
-	MPI_Send_init( &array2[row_start][col_end],   1, MPI_SHORT, rank_ur, tag, virtual_comm, &send_request[1][5]);
-	MPI_Send_init( &array2[row_end][col_start],   1, MPI_SHORT, rank_dl, tag, virtual_comm, &send_request[1][6]);
-	MPI_Send_init( &array2[row_end][col_end],     1, MPI_SHORT, rank_dr, tag, virtual_comm, &send_request[1][7]);
+	if (line_div != 1 || col_div != 1) {
+		MPI_Send_init( &array1[row_start][col_start], 1, MPI_SHORT, rank_ul, send_tags[4], virtual_comm, &send_request[0][4]);
+		MPI_Send_init( &array1[row_start][col_end],   1, MPI_SHORT, rank_ur, send_tags[5], virtual_comm, &send_request[0][5]);
+		MPI_Send_init( &array1[row_end][col_start],   1, MPI_SHORT, rank_dl, send_tags[6], virtual_comm, &send_request[0][6]);
+		MPI_Send_init( &array1[row_end][col_end],     1, MPI_SHORT, rank_dr, send_tags[7], virtual_comm, &send_request[0][7]);
+		MPI_Send_init( &array2[row_start][col_start], 1, MPI_SHORT, rank_ul, send_tags[4], virtual_comm, &send_request[1][4]);
+		MPI_Send_init( &array2[row_start][col_end],   1, MPI_SHORT, rank_ur, send_tags[5], virtual_comm, &send_request[1][5]);
+		MPI_Send_init( &array2[row_end][col_start],   1, MPI_SHORT, rank_dl, send_tags[6], virtual_comm, &send_request[1][6]);
+		MPI_Send_init( &array2[row_end][col_end],     1, MPI_SHORT, rank_dr, send_tags[7], virtual_comm, &send_request[1][7]);
+	}
+	else {
+		MPI_Send_init( &array1[row_start][col_start], 1, MPI_SHORT, MPI_PROC_NULL, send_tags[4], virtual_comm, &send_request[0][4]);
+		MPI_Send_init( &array1[row_start][col_end],   1, MPI_SHORT, MPI_PROC_NULL, send_tags[5], virtual_comm, &send_request[0][5]);
+		MPI_Send_init( &array1[row_end][col_start],   1, MPI_SHORT, MPI_PROC_NULL, send_tags[6], virtual_comm, &send_request[0][6]);
+		MPI_Send_init( &array1[row_end][col_end],     1, MPI_SHORT, MPI_PROC_NULL, send_tags[7], virtual_comm, &send_request[0][7]);
+		MPI_Send_init( &array2[row_start][col_start], 1, MPI_SHORT, MPI_PROC_NULL, send_tags[4], virtual_comm, &send_request[1][4]);
+		MPI_Send_init( &array2[row_start][col_end],   1, MPI_SHORT, MPI_PROC_NULL, send_tags[5], virtual_comm, &send_request[1][5]);
+		MPI_Send_init( &array2[row_end][col_start],   1, MPI_SHORT, MPI_PROC_NULL, send_tags[6], virtual_comm, &send_request[1][6]);
+		MPI_Send_init( &array2[row_end][col_end],     1, MPI_SHORT, MPI_PROC_NULL, send_tags[7], virtual_comm, &send_request[1][7]);
+	}
 
 	//then the receive requests
 	MPI_Request recv_request[2][8];
@@ -467,35 +523,76 @@ int main(int argc, char* argv[])
 	int right_col = (col_end+1) % M;
 
 	//rows
-	MPI_Recv_init( &array1[up_row][col_start],   cols_per_block, MPI_SHORT, rank_u, tag, virtual_comm, &recv_request[0][0]);
-	MPI_Recv_init( &array1[down_row][col_start], cols_per_block, MPI_SHORT, rank_d, tag, virtual_comm, &recv_request[0][1]);
-	MPI_Recv_init( &array2[up_row][col_start],   cols_per_block, MPI_SHORT, rank_u, tag, virtual_comm, &recv_request[1][0]);
-	MPI_Recv_init( &array2[down_row][col_start], cols_per_block, MPI_SHORT, rank_d, tag, virtual_comm, &recv_request[1][1]);
+	if (line_div != 1) {
+		MPI_Recv_init( &array1[up_row][col_start],   cols_per_block, MPI_SHORT, rank_u, receive_tags[0], virtual_comm, &recv_request[0][0]);
+		MPI_Recv_init( &array1[down_row][col_start], cols_per_block, MPI_SHORT, rank_d, receive_tags[1], virtual_comm, &recv_request[0][1]);
+		MPI_Recv_init( &array2[up_row][col_start],   cols_per_block, MPI_SHORT, rank_u, receive_tags[0], virtual_comm, &recv_request[1][0]);
+		MPI_Recv_init( &array2[down_row][col_start], cols_per_block, MPI_SHORT, rank_d, receive_tags[1], virtual_comm, &recv_request[1][1]);
+	}
+	else {
+		MPI_Recv_init( &array1[up_row][col_start],   cols_per_block, MPI_SHORT, MPI_PROC_NULL, receive_tags[0], virtual_comm, &recv_request[0][0]);
+		MPI_Recv_init( &array1[down_row][col_start], cols_per_block, MPI_SHORT, MPI_PROC_NULL, receive_tags[1], virtual_comm, &recv_request[0][1]);
+		MPI_Recv_init( &array2[up_row][col_start],   cols_per_block, MPI_SHORT, MPI_PROC_NULL, receive_tags[0], virtual_comm, &recv_request[1][0]);
+		MPI_Recv_init( &array2[down_row][col_start], cols_per_block, MPI_SHORT, MPI_PROC_NULL, receive_tags[1], virtual_comm, &recv_request[1][1]);
+	}
 	//cols
-	MPI_Recv_init( &array1[row_start][left_col],  1, derived_type_block_col, rank_l, tag, virtual_comm, &recv_request[0][2]);
-	MPI_Recv_init( &array1[row_start][right_col], 1, derived_type_block_col, rank_r, tag, virtual_comm, &recv_request[0][3]);
-	MPI_Recv_init( &array2[row_start][left_col],  1, derived_type_block_col, rank_l, tag, virtual_comm, &recv_request[1][2]);
-	MPI_Recv_init( &array2[row_start][right_col], 1, derived_type_block_col, rank_r, tag, virtual_comm, &recv_request[1][3]);
+	if (col_div != 1) {
+		MPI_Recv_init( &array1[row_start][left_col],  1, derived_type_block_col, rank_l, receive_tags[2], virtual_comm, &recv_request[0][2]);
+		MPI_Recv_init( &array1[row_start][right_col], 1, derived_type_block_col, rank_r, receive_tags[3], virtual_comm, &recv_request[0][3]);
+		MPI_Recv_init( &array2[row_start][left_col],  1, derived_type_block_col, rank_l, receive_tags[2], virtual_comm, &recv_request[1][2]);
+		MPI_Recv_init( &array2[row_start][right_col], 1, derived_type_block_col, rank_r, receive_tags[3], virtual_comm, &recv_request[1][3]);
+	}
+	else {
+		MPI_Recv_init( &array1[row_start][left_col],  1, derived_type_block_col, MPI_PROC_NULL, receive_tags[2], virtual_comm, &recv_request[0][2]);
+		MPI_Recv_init( &array1[row_start][right_col], 1, derived_type_block_col, MPI_PROC_NULL, receive_tags[3], virtual_comm, &recv_request[0][3]);
+		MPI_Recv_init( &array2[row_start][left_col],  1, derived_type_block_col, MPI_PROC_NULL, receive_tags[2], virtual_comm, &recv_request[1][2]);
+		MPI_Recv_init( &array2[row_start][right_col], 1, derived_type_block_col, MPI_PROC_NULL, receive_tags[3], virtual_comm, &recv_request[1][3]);		
+	}
 	//corners
-	MPI_Recv_init( &array1[up_row][left_col],  1, MPI_SHORT, rank_ul, tag, virtual_comm, &recv_request[0][4]);
-	MPI_Recv_init( &array1[up_row][right_col], 1, MPI_SHORT, rank_ur, tag, virtual_comm, &recv_request[0][5]);
-	MPI_Recv_init( &array1[down_row][left_col],  1, MPI_SHORT, rank_dl, tag, virtual_comm, &recv_request[0][6]);
-	MPI_Recv_init( &array1[down_row][right_col], 1, MPI_SHORT, rank_dr, tag, virtual_comm, &recv_request[0][7]);
-	MPI_Recv_init( &array2[up_row][left_col],  1, MPI_SHORT, rank_ul, tag, virtual_comm, &recv_request[1][4]);
-	MPI_Recv_init( &array2[up_row][right_col], 1, MPI_SHORT, rank_ur, tag, virtual_comm, &recv_request[1][5]);
-	MPI_Recv_init( &array2[down_row][left_col],  1, MPI_SHORT, rank_dl, tag, virtual_comm, &recv_request[1][6]);
-	MPI_Recv_init( &array2[down_row][right_col], 1, MPI_SHORT, rank_dr, tag, virtual_comm, &recv_request[1][7]);
+	if (line_div != 1 || col_div != 1) {
+		MPI_Recv_init( &array1[up_row][left_col],  1, MPI_SHORT, rank_ul, receive_tags[4], virtual_comm, &recv_request[0][4]);
+		MPI_Recv_init( &array1[up_row][right_col], 1, MPI_SHORT, rank_ur, receive_tags[5], virtual_comm, &recv_request[0][5]);
+		MPI_Recv_init( &array1[down_row][left_col],  1, MPI_SHORT, rank_dl, receive_tags[6], virtual_comm, &recv_request[0][6]);
+		MPI_Recv_init( &array1[down_row][right_col], 1, MPI_SHORT, rank_dr, receive_tags[7], virtual_comm, &recv_request[0][7]);
+		MPI_Recv_init( &array2[up_row][left_col],  1, MPI_SHORT, rank_ul, receive_tags[4], virtual_comm, &recv_request[1][4]);
+		MPI_Recv_init( &array2[up_row][right_col], 1, MPI_SHORT, rank_ur, receive_tags[5], virtual_comm, &recv_request[1][5]);
+		MPI_Recv_init( &array2[down_row][left_col],  1, MPI_SHORT, rank_dl, receive_tags[6], virtual_comm, &recv_request[1][6]);
+		MPI_Recv_init( &array2[down_row][right_col], 1, MPI_SHORT, rank_dr, receive_tags[7], virtual_comm, &recv_request[1][7]);
+	}
+	else {
+		MPI_Recv_init( &array1[up_row][left_col],  1, MPI_SHORT, MPI_PROC_NULL, receive_tags[4], virtual_comm, &recv_request[0][4]);
+		MPI_Recv_init( &array1[up_row][right_col], 1, MPI_SHORT, MPI_PROC_NULL, receive_tags[5], virtual_comm, &recv_request[0][5]);
+		MPI_Recv_init( &array1[down_row][left_col],  1, MPI_SHORT, MPI_PROC_NULL, receive_tags[6], virtual_comm, &recv_request[0][6]);
+		MPI_Recv_init( &array1[down_row][right_col], 1, MPI_SHORT, MPI_PROC_NULL, receive_tags[7], virtual_comm, &recv_request[0][7]);
+		MPI_Recv_init( &array2[up_row][left_col],  1, MPI_SHORT, MPI_PROC_NULL, receive_tags[4], virtual_comm, &recv_request[1][4]);
+		MPI_Recv_init( &array2[up_row][right_col], 1, MPI_SHORT, MPI_PROC_NULL, receive_tags[5], virtual_comm, &recv_request[1][5]);
+		MPI_Recv_init( &array2[down_row][left_col],  1, MPI_SHORT, MPI_PROC_NULL, receive_tags[6], virtual_comm, &recv_request[1][6]);
+		MPI_Recv_init( &array2[down_row][right_col], 1, MPI_SHORT, MPI_PROC_NULL, receive_tags[7], virtual_comm, &recv_request[1][7]);
+	}
 
 	int count;
 	int no_change;
 	int no_change_sum;
 
-	int communication_type = 0;//switches between 0 and 1 after each loop
+	int communication_type = 0; //switches between 0 and 1 after each loop
 	MPI_Status statuses[8];
 
 	MPI_Barrier(MPI_COMM_WORLD);
 
 	double start, finish;
+
+	if (PRINT_INITIAL)
+	{
+		gol_array_gather(array1, my_rank, processors, row_start, col_start,
+			blocks_per_row, blocks_per_col, rows_per_block, cols_per_block, derived_type_block_array, virtual_comm);
+		if (my_rank == 0) {
+			printf("Printing initial array:\n\n");
+			fflush(stdout);
+			print_array(array1, N, M);
+			fflush(stdout);
+			putchar('\n');
+		}	
+	}
 
 	if (STATUS && my_rank == 0)
 		printf("Starting the Game of Life\n");
@@ -513,7 +610,7 @@ int main(int argc, char* argv[])
 
 		//calculate/populate 'inner' cells
 		#pragma omp parallel for collapse(2)
-		for (i=row_start + 1; i<= row_end - 1; i++) {
+    for (i=row_start + 1; i<= row_end - 1; i++) {
 			for (j= col_start + 1; j <= col_end - 1; j++) {
 				//for each cell/organism
 
@@ -532,73 +629,73 @@ int main(int argc, char* argv[])
 		//calculate/populate 'outer' cells
 		
 		//up/down row
-		#pragma omp parallel for
+    #pragma omp parallel for
 		for (j= col_start; j <= col_end; j++) {
 			#pragma omp parallel sections
-			{			
-				#pragma omp section
-				{
-					if (populate(array1, array2, N, M, row_start, j) == 0)
-						no_change = 0;					
-				}
-				#pragma omp section
-				{
-					if (populate(array1, array2, N, M, row_end, j) == 0)
-						no_change = 0;					
-				}		
-			}
+      {
+        #pragma omp section
+        {
+          if (populate(array1, array2, N, M, row_start, j) == 0)
+      			no_change = 0;
+    		}
+        #pragma omp section
+        {
+          if (populate(array1, array2, N, M, row_end, j) == 0)
+      			no_change = 0;
+        }
+      }
 		}
 
 		//left/right col
-		#pragma omp parallel for
+    #pragma omp parallel for
 		for (i=row_start; i<= row_end; i++) {
 			#pragma omp parallel sections
-			{
-				#pragma omp section
-				{
-					if (populate(array1, array2, N, M, i, col_start) == 0)
-						no_change = 0;					
-				}
-				#pragma omp section
-				{
-					if (populate(array1, array2, N, M, i, col_end) == 0)
-						no_change = 0;
-				}
-			}
+      {
+        #pragma omp section
+        {
+          if (populate(array1, array2, N, M, i, col_start) == 0)
+    				no_change = 0;
+        }
+        #pragma omp section
+        {
+    			if (populate(array1, array2, N, M, i, col_end) == 0)
+    				no_change = 0;
+        }
+      }
 		}
 
 		//corners
-		#pragma omp parallel sections
-		{
-			#pragma omp section
-			{
-				if (populate(array1, array2, N, M, row_start, col_start) == 0)
-						no_change = 0;				
-			}
-			#pragma omp section
-			{
-				if (populate(array1, array2, N, M, row_start, col_end) == 0)
-						no_change = 0;				
-			}
-			#pragma omp section
-			{
-				if (populate(array1, array2, N, M, row_end, col_start) == 0)
-						no_change = 0;				
-			}
-			#pragma omp section
-			{
-				if (populate(array1, array2, N, M, row_end, col_end) == 0)
-						no_change = 0;				
-			}
-		}
+    #pragma omp parallel sections
+    {
+      #pragma omp section
+      {
+    		if (populate(array1, array2, N, M, row_start, col_start) == 0)
+    				no_change = 0;
+      }
+      #pragma omp section
+      {
+    		if (populate(array1, array2, N, M, row_start, col_end) == 0)
+    				no_change = 0;
+      }
+      #pragma omp section
+      {
+    		if (populate(array1, array2, N, M, row_end, col_start) == 0)
+    				no_change = 0;
+      }
+      #pragma omp section
+      {
+    		if (populate(array1, array2, N, M, row_end, col_end) == 0)
+    				no_change = 0;
+      }
+    }
 
 
 		if ( REDUCE_RATE > 0 && (count + 1) % REDUCE_RATE == 0)
 		{			
 			MPI_Allreduce(&no_change, &no_change_sum, 1, MPI_SHORT, MPI_SUM, virtual_comm);
-			if (no_change_sum == processors)
+			if (no_change_sum == processors )
 			{
-				if (my_rank && STATUS) 
+				if (my_rank == 0 && STATUS) 
 					printf("Terminating because there was no change at loop number %d\n", count);
 
 				break;
@@ -610,8 +707,14 @@ int main(int argc, char* argv[])
 		MPI_Waitall(8, send_request[communication_type], statuses);
 
 		//only the master process prints
-		if (PRINT_STEPS && my_rank == 0) {
-			print_array(array2, N, M);
+		if (PRINT_STEPS) {
+			gol_array_gather(array2, my_rank, processors, row_start, col_start,
+			blocks_per_row, blocks_per_col, rows_per_block, cols_per_block, derived_type_block_array, virtual_comm);
+			if (my_rank == 0) {
+				fflush(stdout);
+				print_array(array2, N, M);
+				fflush(stdout);
+			}
 			putchar('\n');
 		}
 
@@ -647,11 +750,16 @@ int main(int argc, char* argv[])
 	if (TIME && my_rank == 0)
 		printf("Time elapsed: %f seconds\n", elapsed);
 
-	if (my_rank == 0 && PRINT_FINAL)
+	if (PRINT_FINAL)
 	{
 		//Gather the whole (final) gol array into master so he can print it out
-		gol_array_gather(array1, my_rank, processors, row_start, row_end, col_start, col_end);
-		print_array(array1, N, M);
+		gol_array_gather(array1, my_rank, processors, row_start, col_start,
+			blocks_per_row, blocks_per_col, rows_per_block, cols_per_block, derived_type_block_array, virtual_comm);
+		if (my_rank == 0) {
+			fflush(stdout);
+			print_array(array1, N, M);
+			fflush(stdout);
+		}
 	}
 
 	//free arrays
@@ -666,7 +774,7 @@ int main(int argc, char* argv[])
 
 
 void gol_array_read_file_and_scatter(char* filename, gol_array* gol_ar, int processors
-										,int rows_per_block, int cols_per_block, int blocks_per_row)
+										,int rows_per_block, int cols_per_block, int blocks_per_row, MPI_Comm virtual_comm)
 {
 	short int** array = gol_ar->array;
 	int N = gol_ar->lines;
@@ -743,8 +851,13 @@ void gol_array_read_file_and_scatter(char* filename, gol_array* gol_ar, int proc
 
 		row_of_block = (row - 1) / rows_per_block;
 		col_of_block = (col - 1) / cols_per_block;
-		destination_process = row_of_block + col_of_block * blocks_per_row;
-		// printf("(%d,%d) should go to process %d\n", row-1,col-1,destination_process);
+		int neighbour_coords[2];
+		neighbour_coords[0] = row_of_block;
+		neighbour_coords[1] = col_of_block;
+		MPI_Cart_rank(virtual_comm, neighbour_coords, &destination_process);
+		if (DEBUG) {
+			printf("(%d,%d) should go to process %d\n", row-1,col-1,destination_process);
+		}
 
 		//if its for the master process
 		if (destination_process == 0)
@@ -775,7 +888,7 @@ void gol_array_read_file_and_scatter(char* filename, gol_array* gol_ar, int proc
 
 
 void gol_array_generate_and_scatter(gol_array* gol_ar, int processors,
-										int rows_per_block, int cols_per_block, int blocks_per_row)
+										int rows_per_block, int cols_per_block, int blocks_per_row, MPI_Comm virtual_comm)
 {
 	char datestr[9];
 	char timestr[7];
@@ -816,8 +929,13 @@ void gol_array_generate_and_scatter(gol_array* gol_ar, int processors,
 
 		row_of_block = x / rows_per_block;
 		col_of_block = y / cols_per_block;
-		destination_process = row_of_block + col_of_block*blocks_per_row;
-		// printf("(%d,%d) should go to process %d\n", x,y,destination_process);
+		int neighbour_coords[2];
+		neighbour_coords[0] = row_of_block;
+		neighbour_coords[1] = col_of_block;
+		MPI_Cart_rank(virtual_comm, neighbour_coords, &destination_process);
+		if (DEBUG) {
+			printf("(%d,%d) should go to process %d\n", x,y,destination_process);
+		}
 
 		//if its for the master process
 		if (destination_process == 0)
@@ -842,47 +960,39 @@ void gol_array_generate_and_scatter(gol_array* gol_ar, int processors,
 }
 
 
-void gol_array_gather(short int** array, int my_rank, int processes, int row_start, int row_end, int col_start, int col_end)
+void gol_array_gather(short int** array, int my_rank, int processes, int row_start, int col_start,
+	int blocks_per_row, int blocks_per_col, int rows_per_block, int cols_per_block, MPI_Datatype block_array, MPI_Comm virtual_comm)
 {
 	int tag = 201400201;
-	short int coordinates[2];
 
 	if (my_rank == 0)
 	{
-		int count_done = 1; //Master is already done
 		MPI_Status status;
+		int i, j;
+		int receive_process;
+		int neighbour_coords[2];
+		int neigbour_rstart;
+		int neigbour_cstart;
 
-		while (count_done != processes)
-		{
-			MPI_Recv(coordinates, 2, MPI_INT, MPI_ANY_SOURCE, tag, MPI_COMM_WORLD, &status);
-
-			if (coordinates[0] == -1 && coordinates[1] == -1)
-				count_done++;
-			else
-				array[coordinates[0]][coordinates[1]] = 1;
+		for (i = 0; i < blocks_per_row; i++) {
+			for (j = 0; j < blocks_per_col; j++) {
+				if (i != 0 || j != 0) {
+					neigbour_rstart = i * rows_per_block;
+					neigbour_cstart = j * cols_per_block;
+					neighbour_coords[0] = i;
+					neighbour_coords[1] = j;
+					MPI_Cart_rank(virtual_comm, neighbour_coords, &receive_process);
+					if (DEBUG) {
+						fprintf(stderr, "Receiving from %d starting from row %d and col %d\n", receive_process, neigbour_rstart, neigbour_cstart);
+					}
+					MPI_Recv(&(array[neigbour_rstart][neigbour_cstart]), 1, block_array,
+					 receive_process, tag, virtual_comm, &status);
+				}
+			}
 		}
 	}
 	else
 	{
-		int i, j;
-
-		for (i = row_start; i <= row_end; i++)
-		{
-			for (j = col_start; j <= col_end; j++)
-			{
-				if (array[i][j] == 1)
-				{
-					coordinates[0] = i;
-					coordinates[1] = j;					
-					MPI_Send(coordinates, 2, MPI_INT, 0, tag, MPI_COMM_WORLD);
-				}
-
-			}
-		}
-
-		coordinates[0] = -1;
-		coordinates[1] = -1;
-
-		MPI_Send(coordinates, 2, MPI_INT, 0, tag, MPI_COMM_WORLD);
+		MPI_Send(&(array[row_start][col_start]), 1, block_array, 0, tag, virtual_comm);
 	}
 }
