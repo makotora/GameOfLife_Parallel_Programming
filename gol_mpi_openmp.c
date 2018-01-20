@@ -11,24 +11,24 @@
 #include "./gol_lib/gol_array.h"
 #include "./gol_lib/functions.h"
 
-#define DEBUG 1
-#define INFO 1
+#define DEBUG 0
+#define INFO 0
 #define STATUS 1
 #define TIME 1
-#define PRINT_INITIAL 1
-#define PRINT_STEPS 1
-#define PRINT_FINAL 1
+#define PRINT_INITIAL 0
+#define PRINT_STEPS 0
+#define PRINT_FINAL 0
 #define DEFAULT_N 420
 #define DEFAULT_M 420
 #define MAX_LOOPS 200
 #define REDUCE_RATE 1
 #define NUM_THREADS 2
 
-void gol_array_read_file_and_scatter(char* filename, gol_array* gol_ar, int processors,
+void gol_array_read_file_and_scatter(char* filename, gol_array* gol_ar, int processors, int lines, int columns,
 										int rows_per_block, int cols_per_block, int blocks_per_row, MPI_Comm virtual_comm);
-void gol_array_generate_and_scatter(gol_array* gol_ar, int processors,
+void gol_array_generate_and_scatter(gol_array* gol_ar, int processors, int lines, int columns,
 										int rows_per_block, int cols_per_block, int blocks_per_row, MPI_Comm virtual_comm);
-void gol_array_gather(short int** array, int my_rank, int processes, int row_start, int col_start, 
+void gol_array_gather(short int** array, short int** myarray, int my_rank, int processes, int row_start, int col_start, 
 	int blocks_per_row, int blocks_per_col, int rows_per_block, int cols_per_block, MPI_Datatype block_array, MPI_Comm virtual_comm);
 
 int main(int argc, char* argv[])
@@ -206,7 +206,7 @@ int main(int argc, char* argv[])
 
 	MPI_Type_vector(rows_per_block,    
 	   1,                  
-	   M,         
+	   cols_per_block + 2,         
 	   MPI_SHORT,       
 	   &derived_type_block_col);       
 
@@ -218,7 +218,7 @@ int main(int argc, char* argv[])
 
 	MPI_Type_vector(rows_per_block,    
 	   cols_per_block,                  
-	   M,         
+	   cols_per_block + 2,         
 	   MPI_SHORT,       
 	   &derived_type_block_array);       
 
@@ -306,12 +306,17 @@ int main(int argc, char* argv[])
   	//Calculate this process's boundaries
 	int row_start, row_end, col_start, col_end;
   	
-  	//we use the process's coordinates instead of its rank
-  	//because mpi might have reordered the processes for better performance (virtual topology)
-  	row_start = my_coords[0] * rows_per_block;
-  	row_end = row_start + rows_per_block - 1;
-  	col_start = my_coords[1] * cols_per_block;
-  	col_end = col_start + cols_per_block - 1;
+	//we use the process's coordinates instead of its rank
+	//because mpi might have reordered the processes for better performance (virtual topology)
+	// row_start = my_coords[0] * rows_per_block;
+	// row_end = row_start + rows_per_block - 1;
+	// col_start = my_coords[1] * cols_per_block;
+	// col_end = col_start + cols_per_block - 1;
+
+  row_start = 1;
+  row_end = rows_per_block;
+  col_start = 1;
+  col_end = cols_per_block;
 
 	//DEBUG PRINT FOR BOUNDARIES (only master prints it)
 	if (DEBUG)
@@ -341,9 +346,9 @@ int main(int argc, char* argv[])
 		}
 	} 	
 
-	//allocate and init two NxM gol_arrays
-	ga1 = gol_array_init(N, M);
-	ga2 = gol_array_init(N, M);
+	//allocate and init two gol_arrays with two more rows and two more cols
+	ga1 = gol_array_init(rows_per_block + 2, cols_per_block + 2);
+	ga2 = gol_array_init(rows_per_block + 2, cols_per_block + 2);
 
 	//read/generate game of life array
 	//'scatter' game matrix (send the coordinates to the correct process)
@@ -352,7 +357,7 @@ int main(int argc, char* argv[])
 
   		if (filename != NULL) 
   		{
-  			gol_array_read_file_and_scatter(filename, ga1, processors, rows_per_block, cols_per_block, blocks_per_row, virtual_comm);
+  			gol_array_read_file_and_scatter(filename, ga1, processors, N, M, rows_per_block, cols_per_block, blocks_per_row, virtual_comm);
   		}
   		else 
   		{//no input file given, generate a random game array
@@ -361,7 +366,7 @@ int main(int argc, char* argv[])
   				printf("No input file given as argument\n");
   				printf("Generating a random game of life array to play\n");
   			}
-  			gol_array_generate_and_scatter(ga1, processors, rows_per_block, cols_per_block, blocks_per_row, virtual_comm);
+  			gol_array_generate_and_scatter(ga1, processors, N, M, rows_per_block, cols_per_block, blocks_per_row, virtual_comm);
   		}
   	}
   	else //for other processes besides master
@@ -382,7 +387,9 @@ int main(int argc, char* argv[])
   			}
   			else
   			{
-  				array[ coordinates[0] ][ coordinates[1] ] = 1;
+          int x = coordinates[0] % rows_per_block + 1;
+          int y = coordinates[1] % cols_per_block + 1; 
+  				array[x][y] = 1;
   			}
   		}
   	}
@@ -517,10 +524,10 @@ int main(int argc, char* argv[])
 
 	//then the receive requests
 	MPI_Request recv_request[2][8];
-	int up_row = (row_start-1+N) % N;
-	int down_row = (row_end+1) % N;
-	int left_col = (col_start-1+M) % M;
-	int right_col = (col_end+1) % M;
+	int up_row = 0;
+	int down_row = row_end + 1;
+	int left_col = 0;
+	int right_col = col_end + 1;
 
 	//rows
 	if (line_div != 1) {
@@ -580,19 +587,27 @@ int main(int argc, char* argv[])
 	MPI_Barrier(MPI_COMM_WORLD);
 
 	double start, finish;
+  gol_array* whole_array;
 
 	if (PRINT_INITIAL)
 	{
-		gol_array_gather(array1, my_rank, processors, row_start, col_start,
+    whole_array = gol_array_init(N, M);
+    short int** array = whole_array->array;
+		gol_array_gather(array, array1, my_rank, processors, row_start, col_start,
 			blocks_per_row, blocks_per_col, rows_per_block, cols_per_block, derived_type_block_array, virtual_comm);
 		if (my_rank == 0) {
 			printf("Printing initial array:\n\n");
 			fflush(stdout);
-			print_array(array1, N, M);
+			print_array(array, N, M);
 			fflush(stdout);
 			putchar('\n');
-		}	
+		}
+    gol_array_free(&whole_array);	
 	}
+
+  if (PRINT_STEPS) {
+    whole_array = gol_array_init(N, M);
+  }
 
 	if (STATUS && my_rank == 0)
 		printf("Starting the Game of Life\n");
@@ -609,8 +624,8 @@ int main(int argc, char* argv[])
 		MPI_Startall(8, recv_request[communication_type]);
 
 		//calculate/populate 'inner' cells
-		#pragma omp parallel for collapse(2)
-    for (i=row_start + 1; i<= row_end - 1; i++) {
+    #pragma omp parallel for collapse(2)
+		for (i=row_start + 1; i<= row_end - 1; i++) {
 			for (j= col_start + 1; j <= col_end - 1; j++) {
 				//for each cell/organism
 
@@ -631,17 +646,17 @@ int main(int argc, char* argv[])
 		//up/down row
     #pragma omp parallel for
 		for (j= col_start; j <= col_end; j++) {
-			#pragma omp parallel sections
+      #pragma omp parallel sections
       {
         #pragma omp section
         {
-          if (populate(array1, array2, N, M, row_start, j) == 0)
-      			no_change = 0;
+    			if (populate(array1, array2, N, M, row_start, j) == 0)
+    				no_change = 0;
     		}
         #pragma omp section
         {
-          if (populate(array1, array2, N, M, row_end, j) == 0)
-      			no_change = 0;
+        	if (populate(array1, array2, N, M, row_end, j) == 0)
+    				no_change = 0;
         }
       }
 		}
@@ -649,11 +664,11 @@ int main(int argc, char* argv[])
 		//left/right col
     #pragma omp parallel for
 		for (i=row_start; i<= row_end; i++) {
-			#pragma omp parallel sections
+      #pragma omp parallel sections
       {
         #pragma omp section
         {
-          if (populate(array1, array2, N, M, i, col_start) == 0)
+      		if (populate(array1, array2, N, M, i, col_start) == 0)
     				no_change = 0;
         }
         #pragma omp section
@@ -708,11 +723,12 @@ int main(int argc, char* argv[])
 
 		//only the master process prints
 		if (PRINT_STEPS) {
-			gol_array_gather(array2, my_rank, processors, row_start, col_start,
+      short int** array = whole_array->array;
+			gol_array_gather(array, array2, my_rank, processors, row_start, col_start,
 			blocks_per_row, blocks_per_col, rows_per_block, cols_per_block, derived_type_block_array, virtual_comm);
 			if (my_rank == 0) {
 				fflush(stdout);
-				print_array(array2, N, M);
+				print_array(array, N, M);
 				fflush(stdout);
 			}
 			putchar('\n');
@@ -753,18 +769,29 @@ int main(int argc, char* argv[])
 	if (PRINT_FINAL)
 	{
 		//Gather the whole (final) gol array into master so he can print it out
-		gol_array_gather(array1, my_rank, processors, row_start, col_start,
+    if (!PRINT_STEPS) {
+      whole_array = gol_array_init(rows_per_block + 2, cols_per_block + 2);
+    }
+    short int** array = whole_array->array;
+		gol_array_gather(array, array1, my_rank, processors, row_start, col_start,
 			blocks_per_row, blocks_per_col, rows_per_block, cols_per_block, derived_type_block_array, virtual_comm);
 		if (my_rank == 0) {
 			fflush(stdout);
-			print_array(array1, N, M);
+			print_array(array, N, M);
 			fflush(stdout);
 		}
+    if (!PRINT_STEPS) {
+      gol_array_free(&whole_array);
+    }
 	}
 
 	//free arrays
 	gol_array_free(&ga1);
 	gol_array_free(&ga2);
+
+  if (PRINT_STEPS) {
+    gol_array_free(&whole_array);
+  }
 
 	MPI_Finalize();
 
@@ -773,12 +800,12 @@ int main(int argc, char* argv[])
 }
 
 
-void gol_array_read_file_and_scatter(char* filename, gol_array* gol_ar, int processors
-										,int rows_per_block, int cols_per_block, int blocks_per_row, MPI_Comm virtual_comm)
+void gol_array_read_file_and_scatter(char* filename, gol_array* gol_ar, int processors, int lines, int columns,
+										int rows_per_block, int cols_per_block, int blocks_per_row, MPI_Comm virtual_comm)
 {
 	short int** array = gol_ar->array;
-	int N = gol_ar->lines;
-	int M = gol_ar->columns;
+	int N = lines;
+	int M = columns;
 	int tag = 201049;
 
 	char line[100];
@@ -861,7 +888,7 @@ void gol_array_read_file_and_scatter(char* filename, gol_array* gol_ar, int proc
 
 		//if its for the master process
 		if (destination_process == 0)
-			array[row-1][col-1] = 1;
+			array[row-1+1][col-1+1] = 1; // +1 due to extra row,col kept
 		else //if its for another process
 		{
 			//send the coordinates
@@ -887,7 +914,7 @@ void gol_array_read_file_and_scatter(char* filename, gol_array* gol_ar, int proc
 }
 
 
-void gol_array_generate_and_scatter(gol_array* gol_ar, int processors,
+void gol_array_generate_and_scatter(gol_array* gol_ar, int processors, int lines, int columns,
 										int rows_per_block, int cols_per_block, int blocks_per_row, MPI_Comm virtual_comm)
 {
 	char datestr[9];
@@ -906,8 +933,6 @@ void gol_array_generate_and_scatter(gol_array* gol_ar, int processors,
 	}
 
 	short int** array = gol_ar->array;
-	int lines = gol_ar->lines;
-	int columns = gol_ar->columns;
 
 	srand(time(NULL));
 	int alive_count = rand() % (lines*columns + 1);
@@ -939,7 +964,7 @@ void gol_array_generate_and_scatter(gol_array* gol_ar, int processors,
 
 		//if its for the master process
 		if (destination_process == 0)
-			array[x][y] = 1;
+			array[x+1][y+1] = 1; // +1 due to extra col/row kept
 		else //if its for another process
 		{
 			coordinates[0] = x;
@@ -947,7 +972,7 @@ void gol_array_generate_and_scatter(gol_array* gol_ar, int processors,
 			MPI_Send(coordinates, 2, MPI_INT, destination_process, tag, MPI_COMM_WORLD);
 		}
 
-		array[x][y] = 1;
+		// array[x][y] = 1;
 	}
 
 	coordinates[0] = -1;
@@ -960,13 +985,22 @@ void gol_array_generate_and_scatter(gol_array* gol_ar, int processors,
 }
 
 
-void gol_array_gather(short int** array, int my_rank, int processes, int row_start, int col_start,
+void gol_array_gather(short int** array, short int** myarray, int my_rank, int processes, int row_start, int col_start,
 	int blocks_per_row, int blocks_per_col, int rows_per_block, int cols_per_block, MPI_Datatype block_array, MPI_Comm virtual_comm)
 {
 	int tag = 201400201;
+  gol_array* block_gol_array = gol_array_init(rows_per_block + 2, cols_per_block + 2);
+  short int** neighbour_block_array = block_gol_array->array;
 
 	if (my_rank == 0)
 	{
+    //copy master processes array to whole array
+
+    for (int i = 0; i < rows_per_block; i++)
+    {
+      memcpy(&(array[i][0]), &(myarray[i+1][1]), cols_per_block*sizeof(short int));
+    }
+
 		MPI_Status status;
 		int i, j;
 		int receive_process;
@@ -985,14 +1019,23 @@ void gol_array_gather(short int** array, int my_rank, int processes, int row_sta
 					if (DEBUG) {
 						fprintf(stderr, "Receiving from %d starting from row %d and col %d\n", receive_process, neigbour_rstart, neigbour_cstart);
 					}
-					MPI_Recv(&(array[neigbour_rstart][neigbour_cstart]), 1, block_array,
+					MPI_Recv(&(neighbour_block_array[1][1]), 1, block_array,
 					 receive_process, tag, virtual_comm, &status);
+          int neighbour_row = neigbour_rstart;
+          for (int i = 1; i <= rows_per_block; i++)
+          {
+            memcpy(&(array[neighbour_row][neigbour_cstart]),
+                    &(neighbour_block_array[i][1]), cols_per_block*sizeof(short int));
+            neighbour_row++;
+          }
 				}
 			}
 		}
 	}
 	else
 	{
-		MPI_Send(&(array[row_start][col_start]), 1, block_array, 0, tag, virtual_comm);
+		MPI_Send(&(myarray[row_start][col_start]), 1, block_array, 0, tag, virtual_comm);
 	}
+
+  gol_array_free(&block_gol_array);
 }
