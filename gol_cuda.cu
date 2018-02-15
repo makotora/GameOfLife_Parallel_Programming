@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <sys/time.h>
 #include <assert.h>
 #include <string.h>
 #include <stdlib.h>
@@ -15,13 +16,14 @@
 #define STATUS 1
 #define TIME 1
 #define REDUCE_RATE 1
-#define PRINT_INITIAL 1
-#define PRINT_STEPS 1
-#define PRINT_FINAL 1
+#define PRINT_INITIAL 0
+#define PRINT_STEPS 0
+#define PRINT_FINAL 0
 #define DEFAULT_N 420
 #define DEFAULT_M 420
-#define MAX_LOOPS 200
-#define THREADS 1024
+#define MAX_LOOPS 500
+#define CUDA_THREADS 4
+#define CUDA_BLOCKS 64
 
 void print_1d_array(short int * array, int N, int M);
 
@@ -54,13 +56,23 @@ __global__ void parallel_populate(short int* array1, short int* array2, int N, i
   }
 }
 
+double timedifference_msec(struct timeval t0, struct timeval t1)
+{
+    return ((t1.tv_sec - t0.tv_sec) * 1000.0f + (t1.tv_usec - t0.tv_usec) / 1000.0f)/1000.0f;
+}
+
 
 int main(int argc, char* argv[])
 {
 	//the following can be also given by the user (to do)
 	int N,M;
 	int max_loops = -1;
-	int threads = -1;
+
+	int cudaBlocks = -1;
+	int cudaThreads = -1;
+
+	struct timeval start;
+	struct timeval finish;
 
 	gol_array* ga1;
 	gol_array* ga2;
@@ -101,9 +113,14 @@ int main(int argc, char* argv[])
   			max_loops = atoi(argv[i+1]);
   			i++;
   		}
+  		else if ( !strcmp(argv[i], "-b") )
+  		{
+  			cudaBlocks = atoi(argv[i+1]);
+  			i++;
+  		}
 		else if ( !strcmp(argv[i], "-t") )
   		{
-  			threads = atoi(argv[i+1]);
+  			cudaThreads = atoi(argv[i+1]);
   			i++;
   		}
   	}
@@ -132,29 +149,26 @@ int main(int argc, char* argv[])
 	if (max_loops == -1)
 	{
 		max_loops = MAX_LOOPS;
-		
-		if ( INFO )
-			printf("Running with default max loops %d\n", max_loops);
 	}
 
-	if (threads == -1)
+	if (cudaThreads == -1)
 	{
-		threads = THREADS;
+		cudaThreads = CUDA_THREADS;
 		
-		if ( INFO )
-			printf("Running with default threads num %d\n", threads);
+	}
+	
+	if (cudaBlocks == -1)
+	{
+		cudaBlocks = CUDA_BLOCKS;	
 	}
 
-
-
-	if (INFO)
-		printf("N = %d\nM = %d\n", N, M);
-
-	//Calculate block properties
-	int line_div, col_div;
-	double threads_sqrt = sqrt(threads);
-	double div;
-	int last_div_ok;
+	if ( INFO )
+	{
+		printf("N = %d, M = %d\n", N, M);
+		printf("Running with max loops:  %d\n", max_loops);
+		printf("Running with blocks:     %d\n", cudaBlocks);
+		printf("Running with threads:    %d\n", cudaThreads);
+	}
 
 	//allocate and init two NxM gol_arrays
 	ga1 = gol_array_init(N, M);
@@ -175,13 +189,13 @@ int main(int argc, char* argv[])
 		gol_array_generate(ga1);
 	}
 	
-	if (PRINT_INITIAL)
+/*	if (PRINT_INITIAL)
 	{
 		printf("Printing initial array:\n\n");
 		print_array(ga1->array, N, M);
 		putchar('\n');	
 	}
-	
+*/	
 	short int* arr1;
 	short int* arr2;
 	int *cudaNoChange;
@@ -189,32 +203,25 @@ int main(int argc, char* argv[])
 	cudaMalloc((void **) &cudaNoChange, sizeof(int *));
 	cudaMalloc((void **) &arr1, N*M*sizeof(short int *));
 	cudaMalloc((void **) &arr2, N*M*sizeof(short int *));
-//	short int* arr33 = (short int *) malloc(N*M*sizeof(short int));
 	
 	short int* oneDarray1 = (short int *) malloc(N*M*sizeof(short int));
 	short int* oneDarray2 = (short int *) malloc(N*M*sizeof(short int));
 		
 
 	cudaMemcpy(arr1, ga1->flat_array, sizeof(short int) * M * N, cudaMemcpyHostToDevice);
-//	cudaMemcpy(arr33, arr1, sizeof(short int) * M * N, cudaMemcpyDeviceToHost);
-	
-	
 
 	int count;
 
 	int *no_change = (int *) malloc(1*sizeof(int));
 
-	double start, finish;
-
 	if (STATUS)
 		printf("Starting the Game of Life\n");
 
-	start = time(NULL);
-	printf("Heloooooo\n");
+	gettimeofday(&start, 0);
 
 	cudaMemcpy(oneDarray1, arr1, sizeof(short int) * M * N, cudaMemcpyDeviceToHost);
-	print_1d_array(oneDarray1, N,M);
-	printf("\n\n\n\n");
+/*	print_1d_array(oneDarray1, N,M);
+	printf("\n\n\n\n");*/
 
 
 for(count = 0; count < max_loops; count++) 
@@ -225,7 +232,7 @@ for(count = 0; count < max_loops; count++)
 		cudaMemcpy(arr1, oneDarray1, sizeof(short int) * M * N, cudaMemcpyHostToDevice);
 		cudaMemcpy(arr2, oneDarray2, sizeof(short int) * M * N, cudaMemcpyHostToDevice);
 
-		parallel_populate<<<1,1>>>(arr1,  arr2, N,  M, cudaNoChange);
+		parallel_populate<<<cudaBlocks,cudaThreads>>>(arr1,  arr2, N,  M, cudaNoChange);
 
 		cudaMemcpy(oneDarray1, arr1, sizeof(short int) * M * N, cudaMemcpyDeviceToHost);
 		cudaMemcpy(oneDarray2, arr2, sizeof(short int) * M * N, cudaMemcpyDeviceToHost);
@@ -259,16 +266,15 @@ for(count = 0; count < max_loops; count++)
 	}
 
 
-	finish = time(NULL);
-
-	double local_elapsed = finish - start;
-
+	gettimeofday(&finish, 0);
+	
+	double local_elapsed = timedifference_msec(start, finish);
 	if (INFO)
-		printf("Time elapsed: %f seconds\n", local_elapsed);
+		printf("Time elapsed: %.3f seconds\n", local_elapsed);
 
 	if (PRINT_FINAL)
 	{
-//		print_array(array1, N, M);
+		print_1d_array(oneDarray2, N,M);
 	}
 
 	//free arrays
