@@ -11,7 +11,7 @@
 #include "./gol_lib/functions.h"
 
 #define DEBUG 0
-#define INFO 0
+#define INFO 1
 #define STATUS 1
 #define TIME 1
 #define PRINT_INITIAL 0
@@ -358,6 +358,7 @@ int main(int argc, char* argv[])
   				printf("Generating a random game of life array to play\n");
   			}
   			gol_array_generate_and_scatter(ga1, processors, N, M, rows_per_block, cols_per_block, blocks_per_row, virtual_comm);
+        fprintf(stderr, "generate\n");
   		}
   	}
   	else //for other processes besides master

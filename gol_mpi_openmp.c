@@ -918,7 +918,7 @@ void gol_array_read_file_and_scatter(char* filename, gol_array* gol_ar, int proc
 void gol_array_generate_and_scatter(gol_array* gol_ar, int processors, int lines, int columns,
                     int rows_per_block, int cols_per_block, int blocks_per_row, MPI_Comm virtual_comm)
 {
-  FILE* file;
+  FILE* file; 
   if (SAVE_GENERATED)
   {
     char datestr[9];
