@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <sys/time.h>
 #include <assert.h>
 #include <string.h>
 #include <stdlib.h>
@@ -14,92 +15,50 @@
 #define INFO 1
 #define STATUS 1
 #define TIME 1
-#define PRINT_INITIAL 1
-#define PRINT_STEPS 1
-#define PRINT_FINAL 1
+#define REDUCE_RATE 1
+#define PRINT_INITIAL 0
+#define PRINT_STEPS 0
+#define PRINT_FINAL 0
 #define DEFAULT_N 420
 #define DEFAULT_M 420
-#define MAX_LOOPS 200
-#define THREADS 1024
+#define MAX_LOOPS 500
+#define CUDA_THREADS 4
+#define CUDA_BLOCKS 64
 
-__global__ void parallel_populate(short int** array1, short int** array2, int N, int M, int rpb, int cpb, int bpr, int bpc, int *no_change)
+void print_1d_array(short int * array, int N, int M);
+
+__global__ void parallel_populate(short int* array1, short int* array2, int N, int M, int *no_change)
 {
-	int i,j;
-	int row_start, row_end, col_start, col_end;
+
+  uint worldSize = N * M;
+
+  //Κάθε GPU core παίρνει ένα κέλι με την σειρά
+  for (uint cellId = __mul24(blockIdx.x, blockDim.x) + threadIdx.x;
+      cellId < worldSize;
+      cellId += blockDim.x * gridDim.x) {
+
+    uint x = cellId % N;
+    uint yAbs = cellId - x;
+    uint xLeft = (x + N - 1) % N;
+    uint xRight = (x + 1) % N;
+    uint yAbsUp = (yAbs + worldSize - N) % worldSize;
+    uint yAbsDown = (yAbs + N) % worldSize;
+ 
+    uint aliveCells = array1[xLeft + yAbsUp] + array1[x + yAbsUp]
+      + array1[xRight + yAbsUp] + array1[xLeft + yAbs] + array1[xRight + yAbs]
+      + array1[xLeft + yAbsDown] + array1[x + yAbsDown] + array1[xRight + yAbsDown];
+
+    array2[x + yAbs] =
+      aliveCells == 3 || (aliveCells == 2 && array1[x + yAbs]) ? 1 : 0;	
   	
-  	int index = threadIdx.x + blockIdx.x* blockDim.x;
-  	//we use the process's coordinates instead of its rank
-  	//because mpi might have reordered the processes for better performance (virtual topology)
-  	row_start =  (index/bpr) * rpb ;
-  	row_end = row_start + rpb - 1;
-  	col_start = (index%bpc)* cpb;
-  	col_end = col_start + cpb - 1;
+  	if(array1[x + yAbs] != array2[x + yAbs])
+  		*no_change = 0;
+  }
+}
 
-
-  	for (i=row_start + 1; i<= row_end - 1; i++) {
-		for (j= col_start + 1; j <= col_end - 1; j++) {
-				//for each cell/organism
-
-				//for each cell/organism
-				//see if there is a change
-				//populate functions applies the game's rules
-				//and returns 0 if a change occurs
-				//get the number of neighbours
-			int neighbours_num;
-
-			int up_row = (i-1+N) % N;
-			int down_row = (i+1) % N;
-			int right_col = (j+1) % M;
-			int left_col = (j-1+M) % M;
-
-			//neighbours
-			int n1,n2,n3,n4,n5,n6,n7,n8;
-
-			//up
-			n1 = array1[up_row][left_col];
-			n2 = array1[up_row][j];
-			n3 = array1[up_row][right_col];
-
-			//down
-			n4 = array1[down_row][left_col];
-			n5 = array1[down_row][j];
-			n6 = array1[down_row][right_col];
-
-			//left-right
-			n7 = array1[i][left_col];
-			n8 = array1[i][right_col];
-
-			neighbours_num = n1 + n2 + n3 + n4 + n5 + n6 + n7 + n8;
-
-
-			if (array1[i][j] == 1)//if its alive
-			{
-				if (neighbours_num < 2 || neighbours_num > 3)//0,1 or 4 to 8 neighbours
-				{//the organism dies
-					array2[i][j] = 0;
-					*no_change = 0;
-				}
-				else//2 or 3 neigbours. So the organism survives (no change)
-				{
-					array2[i][j] = 1;
-					*no_change = 1;
-				}
-			}
-			else//if its dead
-			{
-				if (neighbours_num == 3)//3 neighbours
-				{//a new organism is born
-					array2[i][j] = 1;
-					*no_change = 0;
-				}
-				else
-				{//still no organism (no change)
-					array2[i][j] = 0;
-					*no_change = 1;
-				}
-			}	
-		}
-	}
+double timedifference_msec(struct timeval t0, struct timeval t1)
+{
+    return ((t1.tv_sec - t0.tv_sec) * 1000.0f + (t1.tv_usec - t0.tv_usec) / 1000.0f)/1000.0f;
 }
 
 
@@ -108,11 +67,16 @@ int main(int argc, char* argv[])
 	//the following can be also given by the user (to do)
 	int N,M;
 	int max_loops = -1;
-	int threads = -1;
+
+	int cudaBlocks = -1;
+	int cudaThreads = -1;
+
+	struct timeval start;
+	struct timeval finish;
 
 	gol_array* ga1;
 	gol_array* ga2;
-	int i, j;
+	int i;
 
 	/* SECTION A
 		Blocks computation
@@ -149,9 +113,14 @@ int main(int argc, char* argv[])
   			max_loops = atoi(argv[i+1]);
   			i++;
   		}
+  		else if ( !strcmp(argv[i], "-b") )
+  		{
+  			cudaBlocks = atoi(argv[i+1]);
+  			i++;
+  		}
 		else if ( !strcmp(argv[i], "-t") )
   		{
-  			threads = atoi(argv[i+1]);
+  			cudaThreads = atoi(argv[i+1]);
   			i++;
   		}
   	}
@@ -180,76 +149,25 @@ int main(int argc, char* argv[])
 	if (max_loops == -1)
 	{
 		max_loops = MAX_LOOPS;
+	}
+
+	if (cudaThreads == -1)
+	{
+		cudaThreads = CUDA_THREADS;
 		
-		if ( INFO )
-			printf("Running with default max loops %d\n", max_loops);
+	}
+	
+	if (cudaBlocks == -1)
+	{
+		cudaBlocks = CUDA_BLOCKS;	
 	}
 
-	if (threads == -1)
+	if ( INFO )
 	{
-		threads = THREADS;
-		
-		if ( INFO )
-			printf("Running with default threads num %d\n", threads);
-	}
-
-
-
-	if (INFO)
-		printf("N = %d\nM = %d\n", N, M);
-
-	//Calculate block properties
-	int line_div, col_div;
-	double threads_sqrt = sqrt(threads);
-	double div;
-	int last_div_ok;
-
-	if (threads_sqrt == floor(threads))
-	{
-		line_div = threads_sqrt;
-		col_div = threads_sqrt;
-	}
-	else
-	{
-		last_div_ok = 1;
-		i = 2;
-		while ( i < (threads / 2) )
-		{
-			div = (float) threads / (float) i;
-
-			if (floor(div) == div)
-			{
-				if ( ( abs((int) div - (int) (threads / div)) >= abs((int) last_div_ok - (int) (threads / last_div_ok)) )
-					|| div == last_div_ok ) {
-					break;
-				}
-
-				last_div_ok = (int) div;
-			}
-
-			i++;
-		}
-
-		if (last_div_ok == 1 && threads != 2 && threads != 1)
-		{
-			printf("Warning, threads num is a prime number and can't be devided well\n");
-		}
-
-		line_div = last_div_ok;
-		col_div = threads / line_div;
-	}
-
-	int rows_per_block = N / line_div;
-	int cols_per_block = M / col_div;
-	int blocks_per_row = N / rows_per_block;
-	int blocks_per_col = M / cols_per_block;
-
-	if (INFO)
-	{
-		printf("line div : %d\n", line_div);
-		printf("col div : %d\n", col_div);
-		printf("rows_per_block: %d\n", rows_per_block);
-		printf("cols_per_block: %d\n", cols_per_block);
+		printf("N = %d, M = %d\n", N, M);
+		printf("Running with max loops:  %d\n", max_loops);
+		printf("Running with blocks:     %d\n", cudaBlocks);
+		printf("Running with threads:    %d\n", cudaThreads);
 	}
 
 	//allocate and init two NxM gol_arrays
@@ -271,101 +189,92 @@ int main(int argc, char* argv[])
 		gol_array_generate(ga1);
 	}
 	
-	if (PRINT_INITIAL)
+/*	if (PRINT_INITIAL)
 	{
 		printf("Printing initial array:\n\n");
 		print_array(ga1->array, N, M);
 		putchar('\n');	
 	}
-
-
-
-
-  	//Calculate this threads's boundaries
-	int row_start, row_end, col_start, col_end;
-  	
-  	
-/*
-  	row_start = 
-  	row_end = 
-  	col_start = 
-  	col_end = 
-*/
-
-
-	short int** array1 = ga1->array;
-	short int** array2 = ga2->array;
-	
+*/	
 	short int* arr1;
 	short int* arr2;
+	int *cudaNoChange;
 
+	cudaMalloc((void **) &cudaNoChange, sizeof(int *));
 	cudaMalloc((void **) &arr1, N*M*sizeof(short int *));
 	cudaMalloc((void **) &arr2, N*M*sizeof(short int *));
-	short int** arr33 = (short int **) malloc(N*sizeof(short int*));
-	short int* arrAll = (short int *) malloc(N*M*sizeof(short int));
+	
+	short int* oneDarray1 = (short int *) malloc(N*M*sizeof(short int));
+	short int* oneDarray2 = (short int *) malloc(N*M*sizeof(short int));
+		
 
-	for (int i = 0; i < N; ++i)
-	{
-		memcpy( arrAll + i*M*sizeof(short int) , array1[i], M*sizeof(short int));
-	}
-
-	cudaMemcpy(arr1, arrAll, sizeof(short int) * M * N, cudaMemcpyHostToDevice);
-
-	for (int i = 0; i < N; ++i)
-	{
-		printf("i=%d\n", i);
-		arr33[i] = (short int *) malloc(M*sizeof(short int));
-		cudaMemcpy(arr33 + i*M*sizeof(short int) , arr1 + i*M*sizeof(short int), sizeof(short int) * M, cudaMemcpyDeviceToHost);
-	}
-	printf("hahahaha\n");
-	print_array(arr33, N, M);
-	return;
+	cudaMemcpy(arr1, ga1->flat_array, sizeof(short int) * M * N, cudaMemcpyHostToDevice);
 
 	int count;
-	int no_change;
-	int no_change_sum;
 
-	double start, finish;
+	int *no_change = (int *) malloc(1*sizeof(int));
 
 	if (STATUS)
 		printf("Starting the Game of Life\n");
 
-	start = time(NULL);
+	gettimeofday(&start, 0);
 
-	for(count = 0; count < max_loops; count++) 
+	cudaMemcpy(oneDarray1, arr1, sizeof(short int) * M * N, cudaMemcpyDeviceToHost);
+/*	print_1d_array(oneDarray1, N,M);
+	printf("\n\n\n\n");*/
+
+
+for(count = 0; count < max_loops; count++) 
 	{
-		no_change = 1;
+		*no_change = 1;
+		cudaMemcpy(cudaNoChange, no_change, sizeof(int), cudaMemcpyHostToDevice);
 
+		cudaMemcpy(arr1, oneDarray1, sizeof(short int) * M * N, cudaMemcpyHostToDevice);
+		cudaMemcpy(arr2, oneDarray2, sizeof(short int) * M * N, cudaMemcpyHostToDevice);
+
+		parallel_populate<<<cudaBlocks,cudaThreads>>>(arr1,  arr2, N,  M, cudaNoChange);
+
+		cudaMemcpy(oneDarray1, arr1, sizeof(short int) * M * N, cudaMemcpyDeviceToHost);
+		cudaMemcpy(oneDarray2, arr2, sizeof(short int) * M * N, cudaMemcpyDeviceToHost);
+		
+		cudaMemcpy(no_change, cudaNoChange, sizeof(int), cudaMemcpyDeviceToHost);
 
 		if (PRINT_STEPS) {
-			print_array(array2, N, M);
+			print_1d_array(oneDarray1	, N, M);
 			putchar('\n');
 		}
 
-		//swap arrays (array2 becomes array1)
-		short int** temp;
-		temp = array1;
-		array1 = array2;
-		array2 = temp;
+		if(count % REDUCE_RATE == 0)
+		{
+			if(*no_change == 1)
+			{
+				printf("Terminating because there was no change at loop number %d\n", count);
+				break;
+			}
+		}
 
+		//swap arrays (array2 becomes array1)
+		short int* temp;
+		temp = oneDarray1;
+		oneDarray1 = oneDarray2;
+		oneDarray2 = temp;
 	}
 
-	if (no_change == 0 && STATUS)
+	if (*no_change == 0 && STATUS)
 	{
 		printf("Max loop number (%d) was reached. Terminating Game of Life\n", max_loops);
 	}
 
 
-	finish = time(NULL);
-
-	double local_elapsed = finish - start;
-
+	gettimeofday(&finish, 0);
+	
+	double local_elapsed = timedifference_msec(start, finish);
 	if (INFO)
-		printf("Time elapsed: %f seconds\n", local_elapsed);
+		printf("Time elapsed: %.3f seconds\n", local_elapsed);
 
 	if (PRINT_FINAL)
 	{
-		print_array(array1, N, M);
+		print_1d_array(oneDarray2, N,M);
 	}
 
 	//free arrays
@@ -570,6 +479,28 @@ void gol_array_generate(gol_array* gol_ar)
 	}
 
 	fclose(file);
+}
+
+void print_1d_array(short int * array, int N, int M)
+{
+	int i, j;
+
+	for (i=0; i<N; i++)
+	{
+		putchar('|');
+
+		for (j=0; j<M; j++)
+		{
+			if (array[i*M+j] == 1)
+				putchar('o');
+			else
+				putchar(' ');
+
+			putchar('|');
+		}
+
+		putchar('\n');
+	}	
 }
 
 void print_array(short int** array, int N, int M)

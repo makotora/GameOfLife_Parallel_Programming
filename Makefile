@@ -8,18 +8,13 @@ CFLAGS= -c -Wall
 LFLAGS= -Wall
 OUT = gol gol_mpi gol_mpi_openmp gol_cuda
 
-all: gol gol_mpi gol_mpi_openmp
-
-mpip: gol_mpip
+all: gol gol_mpi gol_mpi_openmp gol_cuda
 
 gol: gol.o gol_lib_make
 	$(CC) $(LFLAGS) gol.o ./gol_lib/gol_array.o ./gol_lib/functions.o -o gol
 
 gol_mpi: gol_lib_make
 	$(MPICC) $(LFLAGS) gol_mpi.c ./gol_lib/gol_array.o ./gol_lib/functions.o -o gol_mpi -lm
-
-gol_mpip: gol_lib_make
-	$(MPICC) $(LFLAGS) gol_mpi.c ./gol_lib/gol_array.o ./gol_lib/functions.o -o gol_mpi -L /usr/local/mpip-3.4.1/lib -lmpiP -lm -lbfd –liberty
 
 gol_mpi_openmp: gol_lib_make gol_mpi_openmp.c
 	${OPENMP_MPICC} gol_mpi_openmp.c ./gol_lib/gol_array.o ./gol_lib/functions.o -o gol_mpi_openmp -lm
@@ -37,6 +32,6 @@ gol_lib_clean:
 	cd gol_lib && make clean && cd ..
 
 gol_cuda: gol_cuda.cu gol_lib_make
-	nvcc gol_cuda.cu gol_lib/functions.o gol_lib/gol_array.o -o gol_cuda
+	nvcc gol_cuda.cu -o gol_cuda
 count:
 	wc $(SOURCE) $(HEADER)
