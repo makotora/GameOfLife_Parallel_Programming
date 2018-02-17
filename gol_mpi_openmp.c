@@ -24,7 +24,7 @@
 #define REDUCE_RATE 1
 #define NUM_THREADS 2
 #define SAVE_GENERATED 0
-
+  
 void gol_array_read_file_and_scatter(char* filename, gol_array* gol_ar, int processors, int lines, int columns,
 										int rows_per_block, int cols_per_block, int blocks_per_row, MPI_Comm virtual_comm);
 void gol_array_generate_and_scatter(gol_array* gol_ar, int processors, int lines, int columns,
@@ -37,7 +37,7 @@ int main(int argc, char* argv[])
 	//the following can be also given by the user (to do)
 	int N,M;
 	int max_loops = -1;
-	int reduce_rate = -1;
+	int reduce_rate = -999;
 
 	gol_array* ga1;
 	gol_array* ga2;
@@ -136,7 +136,7 @@ int main(int argc, char* argv[])
 			printf("Running with default max loops %d\n", max_loops);
 	}
 
-	if (reduce_rate == -1)
+	if (reduce_rate == -999)
 	{
 		reduce_rate = REDUCE_RATE;
 		

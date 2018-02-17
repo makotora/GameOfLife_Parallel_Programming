@@ -35,7 +35,7 @@ int main(int argc, char* argv[])
 	//the following can be also given by the user (to do)
 	int N,M;
 	int max_loops = -1;
-	int reduce_rate = -1;
+	int reduce_rate = -999;
 
 	gol_array* ga1;
 	gol_array* ga2;
@@ -126,7 +126,7 @@ int main(int argc, char* argv[])
 			printf("Running with default max loops %d\n", max_loops);
 	}
 
-	if (reduce_rate == -1)
+	if (reduce_rate == -999)
 	{
 		reduce_rate = REDUCE_RATE;
 		

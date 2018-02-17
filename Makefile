@@ -10,6 +10,8 @@ OUT = gol gol_mpi gol_mpi_openmp gol_cuda
 
 all: gol gol_mpi gol_mpi_openmp gol_cuda
 
+mpip: gol_mpip
+
 gol: gol.o gol_lib_make
 	$(CC) $(LFLAGS) gol.o ./gol_lib/gol_array.o ./gol_lib/functions.o -o gol
 
@@ -18,6 +20,9 @@ gol_mpi: gol_lib_make
 
 gol_mpi_openmp: gol_lib_make gol_mpi_openmp.c
 	${OPENMP_MPICC} gol_mpi_openmp.c ./gol_lib/gol_array.o ./gol_lib/functions.o -o gol_mpi_openmp -lm
+
+gol_mpip: gol_lib_make
+	$(MPICC) $(LFLAGS) gol_mpi.c ./gol_lib/gol_array.o ./gol_lib/functions.o -o gol_mpi -L /usr/local/mpip-3.4.1/lib -lmpiP -lm -lbfd –liberty
 
 gol.o: gol.c
 	$(CC) $(CFLAGS) gol.c
