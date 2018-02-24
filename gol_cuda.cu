@@ -15,7 +15,7 @@
 #define INFO 1
 #define STATUS 1
 #define TIME 1
-#define REDUCE_RATE 1
+#define REDUCE_RATE -1
 #define PRINT_INITIAL 0
 #define PRINT_STEPS 0
 #define PRINT_FINAL 0
@@ -32,7 +32,7 @@ __global__ void parallel_populate(short int* array1, short int* array2, int N, i
 
   uint worldSize = N * M;
 
-  //Κάθε GPU core παίρνει ένα κέλι με την σειρά
+  //Κάθε GPU thread παίρνει ένα κέλι με την σειρά
   for (uint cellId = __mul24(blockIdx.x, blockDim.x) + threadIdx.x;
       cellId < worldSize;
       cellId += blockDim.x * gridDim.x) {
@@ -44,12 +44,12 @@ __global__ void parallel_populate(short int* array1, short int* array2, int N, i
     uint yAbsUp = (yAbs + worldSize - N) % worldSize;
     uint yAbsDown = (yAbs + N) % worldSize;
  
-    uint aliveCells = array1[xLeft + yAbsUp] + array1[x + yAbsUp]
+    uint alive = array1[xLeft + yAbsUp] + array1[x + yAbsUp]
       + array1[xRight + yAbsUp] + array1[xLeft + yAbs] + array1[xRight + yAbs]
       + array1[xLeft + yAbsDown] + array1[x + yAbsDown] + array1[xRight + yAbsDown];
 
     array2[x + yAbs] =
-      aliveCells == 3 || (aliveCells == 2 && array1[x + yAbs]) ? 1 : 0;	
+      alive == 3 || (alive == 2 && array1[x + yAbs]) ? 1 : 0;	
   	
   	if(array1[x + yAbs] != array2[x + yAbs])
   		*no_change = 0;
@@ -65,23 +65,20 @@ double timedifference_msec(struct timeval t0, struct timeval t1)
 int main(int argc, char* argv[])
 {
 	//the following can be also given by the user (to do)
+	int i;
 	int N,M;
+
 	int max_loops = -1;
 
 	int cudaBlocks = -1;
 	int cudaThreads = -1;
 
+	int reduceRate = -1;
 	struct timeval start;
 	struct timeval finish;
 
 	gol_array* ga1;
 	gol_array* ga2;
-	int i;
-
-	/* SECTION A
-		Blocks computation
-		Matrix allocation, initialization
-	*/
 
 	char* filename = NULL;
 
@@ -123,6 +120,11 @@ int main(int argc, char* argv[])
   			cudaThreads = atoi(argv[i+1]);
   			i++;
   		}
+		else if ( !strcmp(argv[i], "-r") )
+  		{
+  			reduceRate = atoi(argv[i+1]);
+  			i++;
+  		}
   	}
 
 	if (N == -1 || M == -1)
@@ -133,7 +135,7 @@ int main(int argc, char* argv[])
 		if (INFO)
 		{
 			printf("Running with default matrix size %dx%d\n", N, M);
-			printf("Usage : './gol_cuda -f <filename> -l <N> -c <M> -n <max_loops>\n");
+			printf("Usage : './gol_cuda -f <filename> -l <N> -c <M> -n <max_loops> -r <reduceRate> -b <blocks> -t <threads per block>\n");
 		}
 	}
 	else
@@ -141,33 +143,30 @@ int main(int argc, char* argv[])
 		if (N == 0 || M == 0)
 		{
 			printf("Invalid arguments given!");	
-			printf("Usage : './gol_cuda -f <filename> -l <N> -c <M> -n <max_loops>\n");
+			printf("Usage : './gol_cuda -f <filename> -l <N> -c <M> -n <max_loops> -r <reduceRate> -b <blocks> -t <threads per block>\n");
 			printf("Aborting...\n");
 		}
 	}
 
 	if (max_loops == -1)
-	{
 		max_loops = MAX_LOOPS;
-	}
 
 	if (cudaThreads == -1)
-	{
 		cudaThreads = CUDA_THREADS;
-		
-	}
 	
 	if (cudaBlocks == -1)
-	{
 		cudaBlocks = CUDA_BLOCKS;	
-	}
 
 	if ( INFO )
 	{
 		printf("N = %d, M = %d\n", N, M);
-		printf("Running with max loops:  %d\n", max_loops);
-		printf("Running with blocks:     %d\n", cudaBlocks);
-		printf("Running with threads:    %d\n", cudaThreads);
+		printf("Running with max loops:    %d\n", max_loops);
+		printf("Running with blocks:       %d\n", cudaBlocks);
+		printf("Running with threads:      %d\n", cudaThreads);
+		if(reduceRate != -1)
+			printf("Running with reduce rate:  %d\n", reduceRate);
+		else
+			printf("Running with no reduce rate\n");
 	}
 
 	//allocate and init two NxM gol_arrays
@@ -189,13 +188,7 @@ int main(int argc, char* argv[])
 		gol_array_generate(ga1);
 	}
 	
-/*	if (PRINT_INITIAL)
-	{
-		printf("Printing initial array:\n\n");
-		print_array(ga1->array, N, M);
-		putchar('\n');	
-	}
-*/	
+	
 	short int* arr1;
 	short int* arr2;
 	int *cudaNoChange;
@@ -219,14 +212,19 @@ int main(int argc, char* argv[])
 
 	gettimeofday(&start, 0);
 
+	if (PRINT_INITIAL)
+	{
+		print_1d_array(oneDarray1, N,M);
+		putchar('\n');
+	}
 	cudaMemcpy(oneDarray1, arr1, sizeof(short int) * M * N, cudaMemcpyDeviceToHost);
-/*	print_1d_array(oneDarray1, N,M);
-	printf("\n\n\n\n");*/
 
 
-for(count = 0; count < max_loops; count++) 
+	for(count = 0; count < max_loops; count++) 
 	{
 		*no_change = 1;
+
+		//Copy the to arrays and the no_change variable to cuda Device
 		cudaMemcpy(cudaNoChange, no_change, sizeof(int), cudaMemcpyHostToDevice);
 
 		cudaMemcpy(arr1, oneDarray1, sizeof(short int) * M * N, cudaMemcpyHostToDevice);
@@ -234,6 +232,7 @@ for(count = 0; count < max_loops; count++)
 
 		parallel_populate<<<cudaBlocks,cudaThreads>>>(arr1,  arr2, N,  M, cudaNoChange);
 
+		//Copy the to arrays and the no_change variable back to CPU memory
 		cudaMemcpy(oneDarray1, arr1, sizeof(short int) * M * N, cudaMemcpyDeviceToHost);
 		cudaMemcpy(oneDarray2, arr2, sizeof(short int) * M * N, cudaMemcpyDeviceToHost);
 		
@@ -244,7 +243,7 @@ for(count = 0; count < max_loops; count++)
 			putchar('\n');
 		}
 
-		if(count % REDUCE_RATE == 0)
+		if(reduceRate >0 && (count % reduceRate == 0))
 		{
 			if(*no_change == 1)
 			{
@@ -261,10 +260,7 @@ for(count = 0; count < max_loops; count++)
 	}
 
 	if (*no_change == 0 && STATUS)
-	{
 		printf("Max loop number (%d) was reached. Terminating Game of Life\n", max_loops);
-	}
-
 
 	gettimeofday(&finish, 0);
 	
@@ -277,13 +273,23 @@ for(count = 0; count < max_loops; count++)
 		print_1d_array(oneDarray2, N,M);
 	}
 
+
+	//free Cuda malloc space
+	cudaFree(cudaNoChange);
+	cudaFree(arr1);
+	cudaFree(arr2);
+
 	//free arrays
+	free(oneDarray1);
+	free(oneDarray2);
+	free(no_change);
+
 	gol_array_free(&ga1);
 	gol_array_free(&ga2);
 
 	return 0;
-
 }
+
 
 gol_array* gol_array_init(int lines, int columns)
 {
@@ -313,8 +319,6 @@ gol_array* gol_array_init(int lines, int columns)
 	return new_gol_array;
 }
 
-
-
 void gol_array_free(gol_array** gol_ar)
 {
 	gol_array* gol_ar_ptr = *gol_ar;
@@ -324,47 +328,6 @@ void gol_array_free(gol_array** gol_ar)
 	free(*gol_ar);
 	*gol_ar = NULL;
 }
-
-
-
-void gol_array_read_input(gol_array* gol_ar)
-{
-	short int** array = gol_ar->array;
-	int N = gol_ar->lines;
-	int M = gol_ar->columns;
-
-	int row, col;
-	printf("Give row and column of 'alive' cells\n");
-	printf("Row [1, %d]\n", N);
-	printf("Col [1, %d]\n", M);
-	printf("To stop, just give a non-positive row or column\n");
-
-	while (1)
-	{
-		printf("\nRow: ");
-		scanf("%d", &row);
-		if (row <= 0)
-			break;
-
-		printf("Column: ");
-		scanf("%d", &col);
-		if (col <= 0)
-			break;
-
-		if (row > N || col > M)
-		{
-			printf("Invalid row or column! Try again\n");
-			printf("Row [1, %d]\n", N);
-			printf("Col [1, %d]\n", M);
-		}
-		else
-		{
-			array[row-1][col-1] = 1;
-		}
-	}
-}
-
-
 
 void gol_array_read_file(char* filename, gol_array* gol_ar)
 {
@@ -477,18 +440,15 @@ void gol_array_generate(gol_array* gol_ar)
 		fprintf(file, "%d %d\n", x+1, y+1);
 		array[x][y] = 1;
 	}
-
 	fclose(file);
 }
 
 void print_1d_array(short int * array, int N, int M)
 {
 	int i, j;
-
 	for (i=0; i<N; i++)
 	{
 		putchar('|');
-
 		for (j=0; j<M; j++)
 		{
 			if (array[i*M+j] == 1)
@@ -498,7 +458,6 @@ void print_1d_array(short int * array, int N, int M)
 
 			putchar('|');
 		}
-
 		putchar('\n');
 	}	
 }
@@ -506,11 +465,9 @@ void print_1d_array(short int * array, int N, int M)
 void print_array(short int** array, int N, int M)
 {
 	int i, j;
-
 	for (i=0; i<N; i++)
 	{
 		putchar('|');
-
 		for (j=0; j<M; j++)
 		{
 			if (array[i][j] == 1)
@@ -520,91 +477,9 @@ void print_array(short int** array, int N, int M)
 
 			putchar('|');
 		}
-
 		putchar('\n');
 	}
 }
-
-
-int populate(short int** array1, short int** array2, int N, int M, int i, int j)
-{
-	int no_change;
-	//get the number of neighbours
-	int neighbours_num = num_of_neighbours(array1, N, M, i, j);
-
-	if (array1[i][j] == 1)//if its alive
-	{
-		if (neighbours_num < 2 || neighbours_num > 3)//0,1 or 4 to 8 neighbours
-		{//the organism dies
-			array2[i][j] = 0;
-			no_change = 0;
-		}
-		else//2 or 3 neigbours. So the organism survives (no change)
-		{
-			array2[i][j] = 1;
-			no_change = 1;
-		}
-	}
-	else//if its dead
-	{
-		if (neighbours_num == 3)//3 neighbours
-		{//a new organism is born
-			array2[i][j] = 1;
-			no_change = 0;
-		}
-		else
-		{//still no organism (no change)
-			array2[i][j] = 0;
-			no_change = 1;
-		}
-	}	
-
-	return no_change;
-}
-
-
-int num_of_neighbours(short int** array, int N, int M, int row, int col)
-{
-	int up_row = (row-1+N) % N;
-	int down_row = (row+1) % N;
-	int right_col = (col+1) % M;
-	int left_col = (col-1+M) % M;
-
-	//neighbours
-	int n1,n2,n3,n4,n5,n6,n7,n8;
-
-	//up
-	n1 = array[up_row][left_col];
-	n2 = array[up_row][col];
-	n3 = array[up_row][right_col];
-
-	//down
-	n4 = array[down_row][left_col];
-	n5 = array[down_row][col];
-	n6 = array[down_row][right_col];
-
-	//left-right
-	n7 = array[row][left_col];
-	n8 = array[row][right_col];
-
-	return n1 + n2 + n3 + n4 + n5 + n6 + n7 + n8;
-}
-
-
-void print_neighbour_nums(short int** array, int N, int M)
-{
-	int i,j;
-
-	for (i=0; i<N; i++)
-	{
-		for (j=0; j<M; j++)
-		{
-			printf(" %d", num_of_neighbours(array, N, M, i, j));
-		}
-		putchar('\n');
-	}
-}
-
 
 void get_date_time_str(char* datestr, char* timestr)
 {
