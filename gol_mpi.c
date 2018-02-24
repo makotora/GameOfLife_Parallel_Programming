@@ -11,7 +11,7 @@
 #include "./gol_lib/functions.h"
 
 #define DEBUG 0
-#define INFO 0
+#define INFO 1
 #define STATUS 1
 #define TIME 1
 #define PRINT_INITIAL 0
@@ -21,6 +21,7 @@
 #define DEFAULT_M 420
 #define MAX_LOOPS 200
 #define REDUCE_RATE 1
+#define SAVE_GENERATED 0
 
 void gol_array_read_file_and_scatter(char* filename, gol_array* gol_ar, int processors, int lines, int columns,
 										int rows_per_block, int cols_per_block, int blocks_per_row, MPI_Comm virtual_comm);
@@ -34,7 +35,7 @@ int main(int argc, char* argv[])
 	//the following can be also given by the user (to do)
 	int N,M;
 	int max_loops = -1;
-	int reduce_rate = -1;
+	int reduce_rate = -999;
 
 	gol_array* ga1;
 	gol_array* ga2;
@@ -125,7 +126,7 @@ int main(int argc, char* argv[])
 			printf("Running with default max loops %d\n", max_loops);
 	}
 
-	if (reduce_rate == -1)
+	if (reduce_rate == -999)
 	{
 		reduce_rate = REDUCE_RATE;
 		
@@ -357,6 +358,7 @@ int main(int argc, char* argv[])
   				printf("Generating a random game of life array to play\n");
   			}
   			gol_array_generate_and_scatter(ga1, processors, N, M, rows_per_block, cols_per_block, blocks_per_row, virtual_comm);
+        fprintf(stderr, "generate\n");
   		}
   	}
   	else //for other processes besides master
@@ -871,20 +873,24 @@ void gol_array_read_file_and_scatter(char* filename, gol_array* gol_ar, int proc
 void gol_array_generate_and_scatter(gol_array* gol_ar, int processors, int lines, int columns,
 										int rows_per_block, int cols_per_block, int blocks_per_row, MPI_Comm virtual_comm)
 {
-	char datestr[9];
-	char timestr[7];
+  FILE* file;
+  if (SAVE_GENERATED)
+  {
+  	char datestr[9];
+  	char timestr[7];
 
-	get_date_time_str(datestr, timestr);
-	char filename[36];
-	mkdir("generated_tests", 0777);
-	sprintf(filename, "generated_tests/rga_%s_%s", datestr, timestr);
-	
-	FILE* file = fopen(filename, "w");
-	if (file == NULL)
-	{
-		printf("gol_array_generate error opening file!\n");
-		MPI_Abort(MPI_COMM_WORLD, -1);
-	}
+  	get_date_time_str(datestr, timestr);
+  	char filename[36];
+  	mkdir("generated_tests", 0777);
+  	sprintf(filename, "generated_tests/rga_%s_%s", datestr, timestr);
+  	
+  	file = fopen(filename, "w");
+  	if (file == NULL)
+  	{
+  		printf("gol_array_generate error opening file!\n");
+  		MPI_Abort(MPI_COMM_WORLD, -1);
+  	}
+  }
 
 	short int** array = gol_ar->array;
 
@@ -899,34 +905,36 @@ void gol_array_generate_and_scatter(gol_array* gol_ar, int processors, int lines
 
 	for (i=0; i<alive_count; i++)
 	{
-		int x,y;
+    int x,y;
 
-		x = rand() % lines;
-		y = rand() % columns;
+    x = rand() % lines;
+    y = rand() % columns;
 
-		fprintf(file, "%d %d\n", x+1, y+1);
+    if (SAVE_GENERATED) {
+      fprintf(file, "%d %d\n", x+1, y+1);
+    }
 
-		row_of_block = x / rows_per_block;
-		col_of_block = y / cols_per_block;
-		int neighbour_coords[2];
-		neighbour_coords[0] = row_of_block;
-		neighbour_coords[1] = col_of_block;
-		MPI_Cart_rank(virtual_comm, neighbour_coords, &destination_process);
-		if (DEBUG) {
-			printf("(%d,%d) should go to process %d\n", x,y,destination_process);
-		}
+    row_of_block = x / rows_per_block;
+    col_of_block = y / cols_per_block;
+    int neighbour_coords[2];
+    neighbour_coords[0] = row_of_block;
+    neighbour_coords[1] = col_of_block;
+    MPI_Cart_rank(virtual_comm, neighbour_coords, &destination_process);
+    if (DEBUG) {
+    	printf("(%d,%d) should go to process %d\n", x,y,destination_process);
+    }
 
-		//if its for the master process
-		if (destination_process == 0)
-			array[x+1][y+1] = 1; // +1 due to extra col/row kept
-		else //if its for another process
-		{
-			coordinates[0] = x;
-			coordinates[1] = y;
-			MPI_Send(coordinates, 2, MPI_INT, destination_process, tag, MPI_COMM_WORLD);
-		}
+    //if its for the master process
+    if (destination_process == 0)
+    	array[x+1][y+1] = 1; // +1 due to extra col/row kept
+    else //if its for another process
+    {
+    	coordinates[0] = x;
+    	coordinates[1] = y;
+    	MPI_Send(coordinates, 2, MPI_INT, destination_process, tag, MPI_COMM_WORLD);
+    }
 
-		// array[x][y] = 1;
+  	// array[x][y] = 1;
 	}
 
 	coordinates[0] = -1;
@@ -935,7 +943,9 @@ void gol_array_generate_and_scatter(gol_array* gol_ar, int processors, int lines
 	for (i=1; i<processors; i++)
 		MPI_Send(coordinates, 2, MPI_INT, i, tag, MPI_COMM_WORLD);
 
-	fclose(file);
+  if (SAVE_GENERATED) {
+	 fclose(file);
+  }
 }
 
 
