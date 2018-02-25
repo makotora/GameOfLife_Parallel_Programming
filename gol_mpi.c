@@ -661,7 +661,7 @@ int main(int argc, char* argv[])
 				no_change = 0;
 
 
-		if ( REDUCE_RATE > 0 && (count + 1) % REDUCE_RATE == 0)
+		if ( reduce_rate > 0 && (count + 1) % reduce_rate == 0)
 		{			
 			MPI_Allreduce(&no_change, &no_change_sum, 1, MPI_SHORT, MPI_SUM, virtual_comm);
 			if (no_change_sum == processors )

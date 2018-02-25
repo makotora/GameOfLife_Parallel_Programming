@@ -12,7 +12,7 @@
 #include "./gol_lib/functions.h"
 
 #define DEBUG 0
-#define INFO 0
+#define INFO 1
 #define STATUS 1
 #define TIME 1
 #define PRINT_INITIAL 0
@@ -706,7 +706,7 @@ int main(int argc, char* argv[])
     }
 
 
-		if ( REDUCE_RATE > 0 && (count + 1) % REDUCE_RATE == 0)
+		if ( reduce_rate > 0 && (count + 1) % reduce_rate == 0)
 		{			
 			MPI_Allreduce(&no_change, &no_change_sum, 1, MPI_SHORT, MPI_SUM, virtual_comm);
 			if (no_change_sum == processors )
