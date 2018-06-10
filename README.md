@@ -1,6 +1,6 @@
 Conway's Game of Life implementation in C, using three different parallel programming models:
 
-- Distributed memory programming using MPI
+- Distributed memory programming, using MPI
 
 - Shared memory programming, using OpenMP
 
